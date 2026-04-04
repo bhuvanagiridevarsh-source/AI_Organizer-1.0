@@ -1,0 +1,96 @@
+appId: com.systemjanitor.app
+productName: System-Janitor
+copyright: Copyright © 2025
+
+# Sign the app BEFORE electron-builder creates the DMG (correct order).
+# afterPack runs after the .app is built but before packaging into DMG/zip.
+afterPack: scripts/afterPack.js
+
+# ── Files to include in the app bundle ──
+# Without this, electron-builder grabs EVERYTHING in the project folder
+# including dist/ (old builds), FINAL_APP_FOLDER, test_folder, etc.
+files:
+  - "**/*"
+  - "!dist/**"
+  - "!FINAL_APP_FOLDER/**"
+  - "!test_folder/**"
+  - "!backend/**"
+  - "!installer/**"
+  - "!scripts/**"
+  - "!resources_new/**"
+  - "!resources/**"
+  - "!.vscode/**"
+  - "!.claude/**"
+  - "!*.cer"
+  - "!feedback.json"
+  - "!wizard_state.json"
+  - "!CLASSIFICATION_FIX_PROMPT.md"
+  - "!AppleWWDRCAG3.cer"
+
+# ── Source code protection ──
+asar: true
+# Native addons and binaries CANNOT live inside the asar archive.
+# node-llama-cpp ships pre-built .node files and metal shaders that must be unpacked.
+asarUnpack:
+  - "**/node_modules/node-llama-cpp/**/*"
+  - "**/node_modules/@node-llama-cpp/**/*"
+  - "**/node_modules/esbuild/**/*"
+  - "**/node_modules/@esbuild/**/*"
+  - "**/node_modules/iconv-corefoundation/**/*"
+  - "**/node_modules/fsevents/**/*"
+
+# ── Auto-update via GitHub Releases ──
+publish:
+  provider: github
+  owner: bhuvanagiridevarsh-source
+  repo: AI_Organizer
+
+# ── Extra resources bundled into the installer ──
+# No Ollama binary needed — node-llama-cpp handles AI inference directly.
+# The GGUF model downloads to ~/Library/Application Support/system-janitor/models/ on first launch.
+extraResources:
+  - from: "resources/default_alias_map.json"
+    to: "default_alias_map.json"
+
+# macOS
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # identity: null → electron-builder does NOT sign; sign-and-package.sh handles all signing
+  # hardenedRuntime: false → avoids needing notarization entitlements from Apple
+  # gatekeeperAssess: false → skips spctl check during build (we don't have a paid cert)
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extraFiles: []
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+    - x: 270
+      y: 380
+      type: file
+      path: resources/README_OPEN_ME.txt
+
+# Windows
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+# Linux
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility

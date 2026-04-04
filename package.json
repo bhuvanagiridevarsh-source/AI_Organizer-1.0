@@ -1,0 +1,37 @@
+{
+  "name": "system-janitor",
+  "version": "1.0.0",
+  "main": "src/main/index.js",
+  "scripts": {
+    "postinstall": "electron-rebuild -f -w node-llama-cpp",
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:protected": "node scripts/build-protected.js",
+    "build:mac:protected": "node scripts/build-protected.js --mac",
+    "sign:mac": "bash scripts/sign-and-package.sh",
+    "trace": "npx tsx scripts/trace-decision.ts",
+    "migrate": "npx tsx scripts/migrate-knowledge-graph.ts"
+  },
+  "build": {
+    "extends": "electron-builder.yml"
+  },
+  "dependencies": {
+    "adm-zip": "0.5.16",
+    "electron-store": "8.1.0",
+    "electron-updater": "^6.8.3",
+    "mammoth": "^1.11.0",
+    "node-llama-cpp": "^3.0.0",
+    "pdf-parse": "1.1.4",
+    "tesseract.js": "5.1.1",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "40.4.1",
+    "electron-builder": "^26.8.1",
+    "javascript-obfuscator": "^5.3.0"
+  }
+}

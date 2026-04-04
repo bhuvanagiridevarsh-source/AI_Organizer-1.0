@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>AI Organizer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* ── Deep Space Design System ───────────────────── */
+    :root {
+      --ds-void:     #020617;
+      --ds-surface:  rgba(15, 23, 42, 0.40);
+      --ds-panel:    rgba(15, 23, 42, 0.60);
+      --ds-border:   rgba(255, 255, 255, 0.08);
+      --ds-border-h: rgba(255, 255, 255, 0.15);
+      --ds-text:     #e2e8f0;
+      --ds-text-dim: rgba(255, 255, 255, 0.45);
+      --ds-cyan:     #51f2fb;
+      --ds-emerald:  #34d399;
+      --ds-amber:    #fb923c;
+      --ds-red:      #f87171;
+      --ds-purple:   #a78bfa;
+      --ds-blue:     #3b82f6;
+      --ds-neon:     #39ff14;
+    }
+
+    ::selection { background: rgba(167, 139, 250, 0.3); }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--ds-void);
+      color: var(--ds-text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Glassmorphism primitives ───────────────────── */
+    .glass-panel {
+      background: var(--ds-surface);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    /* ── Custom scrollbar ──────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
+    /* ── Fade-in animation ─────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: fadeInUp 0.4s ease-out; }
+
+    /* ── Header ───────────────────────────────────── */
+    .header {
+      background: var(--ds-surface);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--ds-border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .header h1 {
+      font-size: 1.1rem; color: #fff; font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .status { font-size: 0.75rem; color: var(--ds-text-dim); }
+    .status-dot {
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; margin-right: 5px; background: var(--ds-red);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .status-dot.ok {
+      background: var(--ds-emerald);
+      box-shadow: 0 0 8px var(--ds-emerald);
+    }
+
+    /* ── Buttons ──────────────────────────────────── */
+    .btn {
+      padding: 7px 16px; border: none; border-radius: 8px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: all 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.15); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+    .btn-primary {
+      background: linear-gradient(135deg, #1e3a5f, #0f3460);
+      color: #fff; border: 1px solid rgba(255,255,255,0.06);
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,0.04); color: var(--ds-text-dim);
+      border: 1px solid var(--ds-border);
+    }
+    .btn-ghost:hover { color: #fff; border-color: var(--ds-border-h); }
+    .btn-danger {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      color: #fff; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #059669, #047857);
+      color: #fff; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+    }
+    .btn-organize {
+      background: linear-gradient(135deg, var(--ds-blue), #6366f1);
+      color: #fff; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+    }
+    .btn-sm { padding: 6px 14px; }
+
+    /* ── Layout ───────────────────────────────────── */
+    .main {
+      padding: 16px 24px; max-width: 1100px; margin: 0 auto;
+      animation: fadeInUp 0.4s ease-out;
+    }
+
+    /* ── Destination banner ────────────────────────── */
+    .dest-banner {
+      background: var(--ds-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--ds-border);
+      border-radius: 10px; padding: 8px 16px;
+      margin-bottom: 14px; font-size: 12px; color: var(--ds-text-dim);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .dest-banner strong { color: var(--ds-cyan); text-shadow: 0 0 10px rgba(81, 242, 251, 0.3); }
+
+    /* ── Stats ────────────────────────────────────── */
+    .stats-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .stat-card {
+      background: var(--ds-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--ds-border);
+      border-radius: 12px;
+      padding: 10px 16px; flex: 1; min-width: 90px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .stat-card:hover {
+      border-color: var(--ds-border-h);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .stat-card .label {
+      font-size: 0.62rem; color: var(--ds-text-dim);
+      text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;
+    }
+    .stat-card .value { font-size: 1.3rem; font-weight: 700; color: #fff; margin-top: 2px; }
+
+    /* ── Stat value glow by context ──────────────── */
+    .stat-card:nth-child(3) .value { color: var(--ds-amber); }
+
+    /* ── Classification Results table ─────────────── */
+    .results-table {
+      width: 100%; border-collapse: separate; border-spacing: 0 6px;
+      background: transparent;
+    }
+    .results-table th {
+      text-align: left; padding: 10px 12px; font-size: 10px; font-weight: 700;
+      color: var(--ds-text-dim); background: transparent; border: none;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .results-table th.col-cb { width: 44px; text-align: center; }
+    .results-table td {
+      padding: 10px 12px; font-size: 12px;
+      border-top: 1px solid transparent;
+      border-bottom: 1px solid transparent;
+      background: var(--ds-surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+    }
+    .results-table tr td:first-child { border-radius: 10px 0 0 10px; border-left: 1px solid transparent; }
+    .results-table tr td:last-child  { border-radius: 0 10px 10px 0; border-right: 1px solid transparent; }
+    .results-table tr:hover td {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--ds-border-h);
+    }
+    .results-table tr.ai-match td {
+      background: rgba(52, 211, 153, 0.06);
+      border-color: rgba(52, 211, 153, 0.12);
+    }
+    .results-table tr.row-moved td { opacity: 0.35; }
+    .results-table tr.row-error td { color: var(--ds-red); }
+
+    .approve-cb {
+      width: 15px; height: 15px; accent-color: var(--ds-emerald);
+      cursor: pointer; border-radius: 4px;
+    }
+
+    .cat-select {
+      background: rgba(0, 0, 0, 0.3); color: var(--ds-text);
+      border: 1px solid var(--ds-border); border-radius: 6px;
+      padding: 4px 10px; font-size: 11px; cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .cat-select:hover { border-color: var(--ds-border-h); }
+    .cat-select:focus { border-color: var(--ds-cyan); outline: none; }
+
+    .conf-green { color: var(--ds-emerald); font-weight: 600; }
+    .conf-amber { color: var(--ds-amber); font-weight: 600; }
+    .conf-red   { color: var(--ds-red); font-weight: 600; }
+
+    /* ── Confidence bar ──────────────────────────── */
+    .conf-bar-wrap {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .conf-bar-track {
+      width: 70px; height: 4px; background: rgba(255, 255, 255, 0.06);
+      border-radius: 4px; overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%; border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+    .conf-bar-fill.fill-green  { background: var(--ds-emerald); }
+    .conf-bar-fill.fill-amber  { background: var(--ds-amber); }
+    .conf-bar-fill.fill-red    { background: var(--ds-red); }
+
+    .path-cell {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 10px; color: var(--ds-text-dim); word-break: break-all;
+    }
+
+    .spinner {
+      display: inline-block; width: 12px; height: 12px;
+      border: 2px solid var(--ds-border); border-top-color: var(--ds-cyan);
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Table container glass wrapper ────────────── */
+    #tableContainer {
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      border-radius: 16px;
+      padding: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Subtle grid overlay */
+    #tableContainer::before {
+      content: '';
+      position: absolute; inset: 0;
+      pointer-events: none; opacity: 0.02;
+      background-image:
+        linear-gradient(to right, #ffffff 1px, transparent 1px),
+        linear-gradient(to bottom, #ffffff 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ── Action bar ───────────────────────────────── */
+    .action-bar {
+      display: flex; gap: 8px; align-items: center;
+      margin-top: 10px; padding: 10px 0;
+    }
+    .action-bar .count {
+      font-size: 11px; color: var(--ds-text-dim); flex: 1; text-align: center;
+      letter-spacing: 0.3px;
+    }
+    .hidden { display: none !important; }
+
+    /* ── Activity feed ────────────────────────────── */
+    .feed {
+      margin-top: 16px;
+      background: var(--ds-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--ds-border);
+      border-radius: 12px; padding: 12px; max-height: 150px; overflow-y: auto;
+    }
+    .feed-entry { font-size: 12px; color: var(--ds-text); padding: 2px 0; }
+    .feed-dot { font-size: 10px; margin-right: 6px; }
+    .feed-dot.ok  { color: var(--ds-emerald); }
+    .feed-dot.err { color: var(--ds-red); }
+
+    /* ── Empty state ──────────────────────────────── */
+    .empty-state { text-align: center; padding: 48px 20px; color: var(--ds-text-dim); }
+    .empty-state p { margin-top: 6px; font-size: 13px; }
+    .empty-state strong { color: var(--ds-cyan); }
+
+    /* ── Settings overlay ─────────────────────────── */
+    .settings-overlay {
+      position: fixed; inset: 0;
+      background: rgba(2, 6, 23, 0.8);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .settings-panel {
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      border-radius: 16px;
+      padding: 24px; width: 460px; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    }
+    .settings-panel h2 { font-size: 15px; color: #fff; margin-bottom: 14px; font-weight: 700; }
+    .s-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid var(--ds-border);
+    }
+    .s-label { font-size: 12px; color: var(--ds-text); }
+    .s-val   { font-size: 12px; color: var(--ds-emerald); font-weight: 600; }
+    .s-val.missing { color: var(--ds-red); }
+    .s-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+
+    /* ── Mode Switch ────────────────────────────── */
+    .mode-switch {
+      display: flex; gap: 0; border-radius: 20px;
+      overflow: hidden; border: 1px solid var(--ds-border);
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px;
+    }
+    .mode-btn {
+      padding: 5px 14px; border: none; font-size: 11px;
+      font-weight: 600; cursor: pointer; background: transparent;
+      color: var(--ds-text-dim); transition: all 0.25s ease;
+      border-radius: 18px;
+    }
+    .mode-btn:hover { color: #fff; }
+    .mode-btn.active {
+      background: linear-gradient(135deg, var(--ds-blue), #6366f1);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    .header.work-mode {
+      background: rgba(44, 26, 74, 0.5);
+      border-bottom-color: rgba(139, 92, 246, 0.2);
+    }
+    .header.work-mode .mode-btn.active {
+      background: linear-gradient(135deg, #7c3aed, #6d28d9);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+    }
+    .icloud-badge {
+      font-size: 10px; color: var(--ds-purple); margin-left: 6px; display: none;
+    }
+    .icloud-badge.visible { display: inline; }
+
+    /* ── Neural Omnibar ─────────────────────────────── */
+    .search-bar { margin-bottom: 14px; }
+    .search-bar input {
+      width: 100%; padding: 11px 18px; border-radius: 12px;
+      border: 1px solid var(--ds-border);
+      background: var(--ds-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: var(--ds-text); font-size: 13px; outline: none;
+      transition: all 0.25s ease;
+    }
+    .search-bar input::placeholder { color: rgba(255, 255, 255, 0.25); }
+    .search-bar input:focus {
+      border-color: rgba(81, 242, 251, 0.4);
+      box-shadow: 0 0 20px rgba(81, 242, 251, 0.08);
+    }
+    .search-bar input.neural-active {
+      border-color: rgba(81, 242, 251, 0.5);
+      box-shadow: 0 0 24px rgba(81, 242, 251, 0.12);
+    }
+
+    /* ── Toast ────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%);
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      color: #fff; padding: 12px 24px; border-radius: 12px;
+      font-size: 13px; z-index: 200;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    /* ── Admin Footer ────────────────────────────── */
+    .admin-footer {
+      position: fixed; bottom: 12px; right: 16px;
+      font-size: 16px; cursor: pointer; opacity: 0.2; z-index: 50;
+      transition: opacity 0.2s;
+    }
+    .admin-footer:hover { opacity: 0.7; }
+
+    /* ── Boss Dashboard ──────────────────────────── */
+    .boss-stat {
+      background: rgba(0, 0, 0, 0.25); border: 1px solid var(--ds-border);
+      border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;
+    }
+    .boss-stat .boss-label {
+      font-size: 10px; color: var(--ds-text-dim);
+      text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;
+    }
+    .boss-stat .boss-value {
+      font-size: 1.5rem; font-weight: 700; color: var(--ds-emerald); margin-top: 4px;
+    }
+    .boss-stat .boss-value.danger { color: var(--ds-red); }
+
+    /* ── PII flagged row ─────────────────────────── */
+    .results-table tr.row-pii td {
+      background: rgba(248, 113, 113, 0.06);
+      border-color: rgba(248, 113, 113, 0.15);
+      color: var(--ds-red);
+    }
+
+    /* ── Needs Review row ────────────────────────── */
+    .results-table tr.row-review td {
+      background: rgba(251, 146, 60, 0.05);
+      border-color: rgba(251, 146, 60, 0.15);
+      color: var(--ds-amber);
+      box-shadow: inset 0 0 30px rgba(251, 146, 60, 0.03);
+    }
+
+    /* ── Conflict tag ────────────────────────────── */
+    .conflict-tag {
+      display: inline-block; font-size: 9px; padding: 2px 8px;
+      border-radius: 10px; background: rgba(167, 139, 250, 0.15);
+      color: var(--ds-purple); border: 1px solid rgba(167, 139, 250, 0.2);
+      margin-left: 6px; font-weight: 600; letter-spacing: 0.3px;
+    }
+
+    /* ── Neural Answer Card ─────────────────────────── */
+    .neural-card {
+      position: relative;
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(81, 242, 251, 0.15);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 32px rgba(81, 242, 251, 0.06);
+      animation: neuralFadeIn 0.25s ease-out;
+    }
+    @keyframes neuralFadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .neural-card-close {
+      position: absolute; top: 10px; right: 14px;
+      background: none; border: none; color: var(--ds-text-dim);
+      font-size: 16px; cursor: pointer; line-height: 1;
+      transition: color 0.2s;
+    }
+    .neural-card-close:hover { color: #fff; }
+    .neural-card-label {
+      font-size: 9px; text-transform: uppercase; font-weight: 700;
+      color: var(--ds-cyan); letter-spacing: 1.5px; margin-bottom: 8px;
+      text-shadow: 0 0 10px rgba(81, 242, 251, 0.3);
+    }
+    .neural-card-answer {
+      font-size: 13px; color: var(--ds-text); line-height: 1.6;
+      margin-bottom: 10px; white-space: pre-wrap;
+    }
+    .neural-card-sources {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .neural-source-chip {
+      display: inline-block; font-size: 10px; padding: 3px 12px;
+      border-radius: 12px; background: rgba(81, 242, 251, 0.08);
+      color: var(--ds-cyan); cursor: pointer;
+      border: 1px solid rgba(81, 242, 251, 0.15);
+      transition: all 0.2s ease;
+    }
+    .neural-source-chip:hover {
+      background: rgba(81, 242, 251, 0.15);
+      border-color: rgba(81, 242, 251, 0.3);
+      transform: translateY(-1px);
+    }
+    .neural-card-explain {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid var(--ds-border);
+    }
+    .neural-card-explain-label {
+      font-size: 9px; text-transform: uppercase; font-weight: 700;
+      color: var(--ds-amber); letter-spacing: 1px; margin-bottom: 4px;
+    }
+    .neural-card-explain-text {
+      font-size: 11px; color: var(--ds-text-dim); line-height: 1.5;
+    }
+
+    /* ── Neural Card — Success variant (Teacher Protocol) ── */
+    .neural-card.neural-success {
+      border-color: rgba(57, 255, 20, 0.2);
+      box-shadow: 0 8px 32px rgba(57, 255, 20, 0.06);
+    }
+    .neural-card.neural-success .neural-card-label {
+      color: var(--ds-neon);
+      text-shadow: 0 0 10px rgba(57, 255, 20, 0.4);
+    }
+    .neural-card.neural-success .neural-card-answer {
+      color: #d1fae5;
+    }
+    .neural-success-icon {
+      display: inline-block; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--ds-neon); color: var(--ds-void);
+      font-size: 11px; font-weight: bold; text-align: center;
+      line-height: 16px; margin-right: 6px; vertical-align: middle;
+      box-shadow: 0 0 8px rgba(57, 255, 20, 0.4);
+    }
+
+    /* ── Enterprise Dashboard ────────────────────── */
+    .ent-score-ring {
+      display: flex; align-items: center; justify-content: center;
+      width: 80px; height: 80px; border-radius: 50%;
+      border: 4px solid var(--ds-emerald);
+      font-size: 1.5rem; font-weight: 800; color: #fff;
+      margin: 0 auto 14px; flex-shrink: 0;
+    }
+    .ent-score-ring.warn  { border-color: var(--ds-amber); }
+    .ent-score-ring.danger{ border-color: var(--ds-red); }
+    .ent-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      margin-bottom: 16px;
+    }
+    .ent-card {
+      background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .ent-card-label {
+      font-size: 9px; text-transform: uppercase; font-weight: 700;
+      color: rgba(255,255,255,0.4); letter-spacing: 0.8px; margin-bottom: 4px;
+    }
+    .ent-card-value {
+      font-size: 1.4rem; font-weight: 800; color: #fff;
+    }
+    .ent-card-value.ok     { color: var(--ds-emerald); }
+    .ent-card-value.warn   { color: var(--ds-amber); }
+    .ent-card-value.danger { color: var(--ds-red); }
+    .ent-section-title {
+      font-size: 10px; text-transform: uppercase; font-weight: 700;
+      color: rgba(255,255,255,0.4); letter-spacing: 0.8px;
+      margin: 16px 0 8px; border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 12px;
+    }
+    .ent-table {
+      width: 100%; border-collapse: collapse; font-size: 11px;
+    }
+    .ent-table th {
+      text-align: left; padding: 5px 8px; color: rgba(255,255,255,0.3);
+      font-size: 9px; text-transform: uppercase; font-weight: 700;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .ent-table td {
+      padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--ds-text); vertical-align: middle;
+    }
+    .ent-table tr:last-child td { border-bottom: none; }
+    .ent-badge {
+      display: inline-block; font-size: 9px; padding: 2px 8px;
+      border-radius: 10px; font-weight: 700;
+    }
+    .ent-badge.open    { background: rgba(248,113,113,0.15); color: var(--ds-red); }
+    .ent-badge.resolved{ background: rgba(52,211,153,0.12); color: var(--ds-emerald); }
+    .ent-badge.danger  { background: rgba(248,113,113,0.15); color: var(--ds-red); }
+    .ent-badge.warn    { background: rgba(251,146,60,0.15);  color: var(--ds-amber); }
+    .ent-resolve-btn {
+      font-size: 10px; padding: 2px 8px; border-radius: 6px;
+      background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2);
+      color: var(--ds-emerald); cursor: pointer;
+    }
+    .ent-resolve-btn:hover { background: rgba(52,211,153,0.2); }
+    .ent-actions {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;
+      padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .ent-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .ent-bar-label { font-size: 10px; color: rgba(255,255,255,0.5); width: 100px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ent-bar-track { flex:1; height:6px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; }
+    .ent-bar-fill  { height:100%; border-radius:4px; background: linear-gradient(90deg, var(--ds-blue), var(--ds-purple)); }
+    .ent-bar-count { font-size:10px; color:rgba(255,255,255,0.4); width:28px; text-align:right; }
+
+    /* ── Retention rule chips ────────────────────── */
+    .retention-rule-chip {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(251,146,60,0.07); border: 1px solid rgba(251,146,60,0.18);
+      border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 11px;
+    }
+    .retention-rule-chip .rule-label { color: var(--ds-amber); font-weight: 600; }
+    .retention-rule-chip .rule-meta  { color: rgba(255,255,255,0.4); font-size: 10px; margin-top: 2px; }
+    .retention-rule-chip .rule-del   { cursor:pointer; color:var(--ds-red); opacity:0.6; }
+    .retention-rule-chip .rule-del:hover { opacity:1; }
+
+    /* ── Auto-Update Banner ──────────────────────── */
+    .update-banner {
+      background: var(--ds-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(81, 242, 251, 0.15);
+      padding: 8px 24px;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      font-size: 12px; color: var(--ds-cyan);
+      animation: fadeInUp 0.3s ease-out;
+    }
+    .update-banner .update-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--ds-cyan);
+      box-shadow: 0 0 8px var(--ds-cyan);
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .update-banner .update-btn {
+      padding: 4px 14px; border: 1px solid rgba(81, 242, 251, 0.3);
+      border-radius: 6px; background: rgba(81, 242, 251, 0.1);
+      color: var(--ds-cyan); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .update-banner .update-btn:hover {
+      background: rgba(81, 242, 251, 0.2);
+      border-color: var(--ds-cyan);
+      box-shadow: 0 0 12px rgba(81, 242, 251, 0.15);
+    }
+
+    /* ── Low-RAM Warning Banner ─────────────────── */
+    .ram-banner {
+      background: rgba(251, 191, 36, 0.08);
+      border-bottom: 1px solid rgba(251, 191, 36, 0.3);
+      padding: 9px 20px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 12px; color: #fbbf24;
+      animation: fadeInUp 0.3s ease-out;
+    }
+    .ram-banner-icon { font-size: 14px; flex-shrink: 0; }
+    .ram-banner-btn {
+      padding: 4px 14px; border: 1px solid rgba(251,191,36,0.4);
+      border-radius: 6px; background: rgba(251,191,36,0.12);
+      color: #fbbf24; font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+    }
+    .ram-banner-btn:hover { background: rgba(251,191,36,0.25); }
+    .ram-banner-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ram-banner-close {
+      margin-left: auto; background: none; border: none;
+      color: rgba(251,191,36,0.6); cursor: pointer; font-size: 14px;
+      padding: 2px 6px; flex-shrink: 0;
+    }
+    .ram-banner-close:hover { color: #fbbf24; }
+
+    /* ── Model Download Overlay ──────────────────── */
+    .model-dl-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(2, 6, 23, 0.97);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .model-dl-overlay.hidden { display: none; }
+    .model-dl-card {
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 20px;
+      padding: 48px 52px;
+      text-align: center;
+      width: 480px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+    .model-dl-icon { font-size: 52px; margin-bottom: 20px; }
+    .model-dl-title { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 10px; }
+    .model-dl-sub { color: rgba(255,255,255,0.55); font-size: 13px; line-height: 1.6; margin-bottom: 32px; }
+    .model-dl-progress-wrap {
+      background: rgba(255,255,255,0.08);
+      border-radius: 99px; height: 8px; overflow: hidden; margin-bottom: 14px;
+    }
+    .model-dl-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #51f2fb, #a78bfa);
+      border-radius: 99px;
+      transition: width 0.4s ease;
+    }
+    .model-dl-pct { font-size: 32px; font-weight: 700; color: #51f2fb; margin-bottom: 6px; }
+    .model-dl-status { color: rgba(255,255,255,0.45); font-size: 13px; margin-bottom: 28px; min-height: 18px; }
+    .model-dl-retry {
+      background: rgba(248,113,113,0.15); border: 1px solid #f87171;
+      color: #f87171; padding: 10px 28px; border-radius: 8px;
+      cursor: pointer; font-size: 14px; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .model-dl-retry:hover { background: rgba(248,113,113,0.30); }
+    .model-dl-retry.hidden { display: none; }
+
+    /* ── Search index upgrade banner ──────────────── */
+    #searchUpgradeBanner {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(20, 24, 36, 0.95);
+      border-top: 1px solid rgba(81, 242, 251, 0.25);
+      padding: 9px 20px;
+      display: flex; align-items: center; gap: 14px;
+      font-size: 12px; color: rgba(255,255,255,0.65);
+      z-index: 9000; transition: opacity 0.3s;
+    }
+    #searchUpgradeBanner.hidden { display: none; }
+    #searchUpgradeBanner .sub-progress-bar-wrap {
+      flex: 1; height: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 2px; overflow: hidden;
+    }
+    #searchUpgradeBanner .sub-progress-bar {
+      height: 100%; border-radius: 2px;
+      background: linear-gradient(90deg, #51f2fb, #9f7aea);
+      transition: width 0.3s ease;
+    }
+    #searchUpgradeBanner .sub-pct { min-width: 36px; text-align: right; color: #51f2fb; font-weight: 600; }
+
+    /* ── System Check rows ──────────────────────── */
+    .sys-check-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 14px; border-radius: 8px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+    }
+    .sys-check-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+    .sys-check-label { font-size: 13px; font-weight: 600; color: var(--ds-text); }
+    .sys-check-detail { font-size: 11px; color: var(--ds-text-muted); margin-top: 2px; }
+
+    /* ── Chat Button ──────────────────────────────────── */
+    .btn-chat {
+      background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(59,130,246,0.2));
+      border: 1px solid rgba(167,139,250,0.4);
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+    .btn-chat:hover {
+      background: linear-gradient(135deg, rgba(167,139,250,0.35), rgba(59,130,246,0.35));
+      border-color: rgba(167,139,250,0.7);
+      box-shadow: 0 0 16px rgba(167,139,250,0.25);
+    }
+
+    /* ── Chat Panel ───────────────────────────────────── */
+    .chat-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(4px);
+      z-index: 900;
+      transition: opacity 0.25s;
+    }
+    .chat-panel {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: 420px;
+      background: #0b1120;
+      border-left: 1px solid rgba(167,139,250,0.2);
+      box-shadow: -8px 0 40px rgba(0,0,0,0.5);
+      z-index: 901;
+      display: flex; flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .chat-panel.open {
+      transform: translateX(0);
+    }
+    .chat-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(167,139,250,0.06);
+      flex-shrink: 0;
+    }
+    .chat-header-left { display: flex; align-items: center; gap: 12px; }
+    .chat-icon { font-size: 1.4rem; }
+    .chat-title { font-size: 0.95rem; font-weight: 700; color: #c4b5fd; }
+    .chat-subtitle { font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: 1px; }
+    .chat-close {
+      background: none; border: none; color: rgba(255,255,255,0.4);
+      font-size: 1rem; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .chat-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+    /* Messages area */
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 20px 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .chat-welcome { text-align: center; padding: 24px 16px; }
+    .chat-welcome-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .chat-welcome-title { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; }
+    .chat-welcome-body { font-size: 0.8rem; color: rgba(255,255,255,0.45); line-height: 1.5; margin-bottom: 20px; }
+    .chat-suggestions { display: flex; flex-direction: column; gap: 8px; }
+    .chat-suggestion {
+      background: rgba(167,139,250,0.08);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: 8px; color: #c4b5fd;
+      font-size: 0.78rem; padding: 8px 12px;
+      cursor: pointer; text-align: left; transition: all 0.15s;
+    }
+    .chat-suggestion:hover {
+      background: rgba(167,139,250,0.18);
+      border-color: rgba(167,139,250,0.4);
+    }
+
+    /* Individual messages */
+    .chat-msg { display: flex; flex-direction: column; gap: 4px; animation: fadeInUp 0.2s ease; }
+    .chat-msg-user { align-items: flex-end; }
+    .chat-msg-ai { align-items: flex-start; }
+    .chat-bubble {
+      max-width: 85%; padding: 10px 14px;
+      border-radius: 12px; font-size: 0.83rem; line-height: 1.55;
+      word-break: break-word;
+    }
+    .chat-msg-user .chat-bubble {
+      background: linear-gradient(135deg, rgba(167,139,250,0.25), rgba(59,130,246,0.25));
+      border: 1px solid rgba(167,139,250,0.3);
+      color: #e2e8f0; border-bottom-right-radius: 3px;
+    }
+    .chat-msg-ai .chat-bubble {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #e2e8f0; border-bottom-left-radius: 3px;
+    }
+    .chat-msg-label {
+      font-size: 0.68rem; color: rgba(255,255,255,0.3);
+      padding: 0 4px;
+    }
+    .chat-typing-dot {
+      display: inline-block; width: 6px; height: 6px;
+      background: rgba(255,255,255,0.4); border-radius: 50%;
+      animation: typingPulse 1.2s ease-in-out infinite;
+    }
+    .chat-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingPulse {
+      0%, 60%, 100% { opacity: 0.3; transform: scale(1); }
+      30% { opacity: 1; transform: scale(1.3); }
+    }
+
+    /* ── Chat file-reading progress bar ── */
+    .chat-reading-bar {
+      width: 100%; max-width: 280px;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .chat-reading-label {
+      font-size: 0.72rem; color: rgba(255,255,255,0.5);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chat-reading-track {
+      width: 100%; height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px; overflow: hidden;
+    }
+    .chat-reading-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #a78bfa, #3b82f6);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    @keyframes readingShimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .chat-reading-fill.active {
+      background: linear-gradient(90deg, #a78bfa, #3b82f6, #a78bfa);
+      background-size: 200% 100%;
+      animation: readingShimmer 1.5s ease infinite;
+    }
+
+    /* Input area */
+    .chat-input-area {
+      padding: 12px 16px 16px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+    }
+    .chat-input-row { display: flex; gap: 8px; align-items: center; }
+    .chat-input {
+      flex: 1; background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; padding: 10px 14px;
+      color: #e2e8f0; font-size: 0.85rem; outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: rgba(167,139,250,0.5); }
+    .chat-input::placeholder { color: rgba(255,255,255,0.3); }
+    .chat-send-btn {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(167,139,250,0.3), rgba(59,130,246,0.3));
+      border: 1px solid rgba(167,139,250,0.4);
+      color: #c4b5fd; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .chat-send-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(167,139,250,0.5), rgba(59,130,246,0.5));
+      box-shadow: 0 0 16px rgba(167,139,250,0.3);
+    }
+    .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .chat-hint { font-size: 0.68rem; color: rgba(255,255,255,0.25); text-align: center; margin-top: 8px; }
+
+    /* ── Source Chips ──────────────────────────────────── */
+    .chat-sources { margin-top: 10px; }
+    .chat-sources-label {
+      font-size: 0.63rem; text-transform: uppercase; font-weight: 700;
+      letter-spacing: 0.8px; color: rgba(255,255,255,0.3);
+      margin-bottom: 6px;
+    }
+    .chat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chat-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(167,139,250,0.08);
+      border: 1px solid rgba(167,139,250,0.22);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.72rem; color: #c4b5fd;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chat-chip:hover {
+      background: rgba(167,139,250,0.2);
+      border-color: rgba(167,139,250,0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(167,139,250,0.15);
+    }
+    .chat-chip-icon { font-size: 0.7rem; flex-shrink: 0; }
+
+    /* ── File Preview Panel (absolute overlay inside chat-panel) ─── */
+    .chat-preview {
+      position: absolute; inset: 0;
+      background: #0b1120;
+      border-left: 1px solid rgba(167,139,250,0.15);
+      z-index: 10;
+      display: flex; flex-direction: column;
+      animation: fadeInUp 0.2s ease-out;
+    }
+    .chat-preview.hidden { display: none !important; }
+    .chat-preview-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      background: rgba(167,139,250,0.06);
+      flex-shrink: 0;
+    }
+    .chat-preview-title {
+      font-size: 0.85rem; font-weight: 600; color: #c4b5fd;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 300px;
+    }
+    .chat-preview-body {
+      flex: 1; overflow-y: auto;
+      padding: 18px;
+    }
+    .chat-preview-meta {
+      font-size: 0.7rem; color: rgba(255,255,255,0.35);
+      margin-bottom: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .chat-preview-text {
+      font-size: 0.82rem; color: #cbd5e1;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Highlighted query matches ─────────────────────── */
+    mark.chat-highlight {
+      background: rgba(251, 191, 36, 0.25);
+      color: #fde68a;
+      border-radius: 3px;
+      padding: 0 2px;
+      font-weight: 600;
+    }
+
+    /* ── Undo/Redo buttons (header) ────────────────────── */
+    .btn-undo {
+      font-size: 15px; padding: 4px 9px;
+      opacity: 0.7; transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn-undo:not(:disabled):hover { opacity: 1; transform: translateY(-1px); }
+    .btn-undo:disabled { opacity: 0.2; cursor: not-allowed; transform: none; }
+
+    /* ── Watcher Bar ───────────────────────────────────── */
+    .watcher-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(52, 211, 153, 0.05);
+      border: 1px solid rgba(52, 211, 153, 0.15);
+      border-radius: 10px; padding: 8px 14px;
+      margin-bottom: 10px; gap: 12px;
+    }
+    .watcher-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .watcher-bar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .watcher-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ds-text-dim); flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .watcher-dot.active {
+      background: var(--ds-emerald);
+      box-shadow: 0 0 8px var(--ds-emerald);
+      animation: pulse-dot 1.8s ease-in-out infinite;
+    }
+    .watcher-label { font-size: 12px; font-weight: 600; color: var(--ds-text); white-space: nowrap; }
+    .watcher-folders {
+      font-size: 11px; color: var(--ds-text-dim);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .watcher-folder-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.2);
+      border-radius: 12px; padding: 2px 10px; font-size: 11px; color: var(--ds-emerald);
+      margin-right: 4px;
+    }
+    .watcher-folder-chip .chip-remove {
+      cursor: pointer; opacity: 0.6; font-size: 10px; margin-left: 2px;
+    }
+    .watcher-folder-chip .chip-remove:hover { opacity: 1; color: var(--ds-red); }
+    #watcherToggleBtn.active {
+      background: linear-gradient(135deg, #059669, #047857);
+      color: #fff; border-color: transparent;
+    }
+
+    /* ── Drag & Drop Overlay ──────────────────────────── */
+    .drop-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(2, 6, 23, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .drop-overlay.active { opacity: 1; pointer-events: all; }
+    .drop-zone {
+      width: 400px; height: 260px;
+      border: 2px dashed rgba(81, 242, 251, 0.5);
+      border-radius: 24px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      color: var(--ds-cyan);
+      animation: dropPulse 1.5s ease-in-out infinite;
+    }
+    @keyframes dropPulse {
+      0%, 100% { border-color: rgba(81, 242, 251, 0.5); box-shadow: 0 0 30px rgba(81, 242, 251, 0.05); }
+      50%      { border-color: rgba(81, 242, 251, 0.8); box-shadow: 0 0 40px rgba(81, 242, 251, 0.15); }
+    }
+    .drop-zone-icon { font-size: 3rem; }
+    .drop-zone-text { font-size: 16px; font-weight: 600; }
+    .drop-zone-hint { font-size: 12px; color: var(--ds-text-dim); }
+
+    /* ── Onboarding Wizard ──────────────────────────────── */
+    .onboarding-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      background: rgba(2, 6, 23, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .onboarding-card {
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      border-radius: 20px;
+      padding: 36px 40px;
+      width: 520px; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+      text-align: center;
+    }
+    .onboarding-icon { font-size: 3rem; margin-bottom: 16px; }
+    .onboarding-title {
+      font-size: 20px; font-weight: 800; color: #fff;
+      margin-bottom: 8px;
+    }
+    .onboarding-subtitle {
+      font-size: 13px; color: var(--ds-text-dim);
+      margin-bottom: 24px; line-height: 1.6;
+    }
+    .onboarding-steps {
+      text-align: left; margin-bottom: 24px;
+    }
+    .onboarding-step {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--ds-border);
+    }
+    .onboarding-step:last-child { border-bottom: none; }
+    .onboarding-step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--ds-blue), #6366f1);
+      color: #fff; font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .onboarding-step-text {
+      font-size: 13px; color: var(--ds-text); line-height: 1.5;
+      padding-top: 3px;
+    }
+    .onboarding-step-text strong { color: var(--ds-cyan); }
+    .onboarding-actions {
+      display: flex; gap: 10px; justify-content: center;
+    }
+    .onboarding-dots {
+      display: flex; gap: 8px; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .onboarding-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      transition: background 0.3s;
+    }
+    .onboarding-dot.active {
+      background: var(--ds-cyan);
+      box-shadow: 0 0 8px rgba(81, 242, 251, 0.4);
+    }
+
+    /* ── Shortcuts Reference ─────────────────────────── */
+    .shortcut-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; border-bottom: 1px solid var(--ds-border);
+    }
+    .shortcut-row:last-child { border-bottom: none; }
+    .shortcut-label { font-size: 12px; color: var(--ds-text); }
+    .shortcut-key {
+      font-size: 11px; font-family: "SF Mono", monospace;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px; padding: 2px 8px; color: var(--ds-cyan);
+    }
+
+    /* ── Cloud Connector Bar ──────────────────────────── */
+    .cloud-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(59, 130, 246, 0.05);
+      border: 1px solid rgba(59, 130, 246, 0.15);
+      border-radius: 10px; padding: 8px 14px;
+      margin-bottom: 10px; gap: 12px;
+    }
+    .cloud-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .cloud-bar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .cloud-bar-label { font-size: 12px; font-weight: 600; color: var(--ds-text); white-space: nowrap; }
+    .cloud-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      border-radius: 12px; padding: 2px 10px; font-size: 11px;
+      margin-right: 4px;
+    }
+    .cloud-chip.enabled {
+      background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.2); color: var(--ds-emerald);
+    }
+    .cloud-chip.disabled {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--ds-text-dim);
+    }
+    .cloud-chip .chip-toggle {
+      cursor: pointer; opacity: 0.6; font-size: 10px; margin-left: 2px;
+    }
+    .cloud-chip .chip-toggle:hover { opacity: 1; }
+    .cloud-sync-progress {
+      height: 3px; background: rgba(255,255,255,0.06);
+      border-radius: 3px; overflow: hidden; margin-top: 6px;
+    }
+    .cloud-sync-progress-fill {
+      height: 100%; border-radius: 3px;
+      background: linear-gradient(90deg, var(--ds-blue), var(--ds-cyan));
+      transition: width 0.3s ease;
+    }
+
+    /* ── Cloud Settings ─────────────────────────────────── */
+    .cloud-connector-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px; margin-bottom: 8px;
+      background: rgba(0,0,0,0.2); border: 1px solid var(--ds-border);
+      border-radius: 10px;
+    }
+    .cloud-connector-row .cc-info { flex: 1; min-width: 0; }
+    .cloud-connector-row .cc-name { font-size: 13px; font-weight: 600; color: #fff; }
+    .cloud-connector-row .cc-path {
+      font-size: 10px; color: var(--ds-text-dim);
+      font-family: "SF Mono", monospace; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cloud-connector-row .cc-status {
+      font-size: 10px; margin-top: 3px;
+    }
+    .cloud-connector-row .cc-status.ok { color: var(--ds-emerald); }
+    .cloud-connector-row .cc-status.err { color: var(--ds-red); }
+    .cloud-connector-row .cc-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; margin-left: 12px; }
+    .cloud-toggle {
+      position: relative; width: 36px; height: 20px;
+      border-radius: 20px; cursor: pointer;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+      transition: all 0.25s;
+    }
+    .cloud-toggle.on {
+      background: rgba(52,211,153,0.25); border-color: rgba(52,211,153,0.4);
+    }
+    .cloud-toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--ds-text-dim); transition: all 0.25s;
+    }
+    .cloud-toggle.on::after {
+      left: 18px; background: var(--ds-emerald);
+      box-shadow: 0 0 6px rgba(52,211,153,0.4);
+    }
+
+    /* ── Rename Modal ──────────────────────────────────── */
+    .rename-row {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px;
+    }
+    .rename-label {
+      font-size: 11px; font-weight: 700; color: var(--ds-text-dim);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      width: 56px; flex-shrink: 0;
+    }
+    .rename-original {
+      font-size: 12px; color: var(--ds-text); font-family: "SF Mono", monospace;
+      background: rgba(0,0,0,0.2); border-radius: 6px; padding: 6px 10px;
+      flex: 1; word-break: break-all;
+    }
+    .rename-arrow {
+      text-align: center; font-size: 11px; color: var(--ds-cyan);
+      margin: 4px 0 10px; letter-spacing: 0.3px;
+    }
+    .rename-input {
+      flex: 1; background: rgba(0,0,0,0.3); color: var(--ds-text);
+      border: 1px solid var(--ds-border); border-radius: 6px;
+      padding: 7px 10px; font-size: 12px; outline: none;
+      font-family: "SF Mono", monospace;
+      transition: border-color 0.2s;
+    }
+    .rename-input:focus { border-color: var(--ds-cyan); }
+    .rename-confidence {
+      font-size: 11px; color: var(--ds-text-dim);
+      margin-bottom: 10px; padding: 6px 10px;
+      background: rgba(52,211,153,0.05); border-radius: 6px;
+    }
+    .rename-spinner { font-size: 12px; color: var(--ds-text-dim); margin-bottom: 10px; }
+
+    /* ── Reindex Bar ───────────────────────────────────── */
+    .chat-reindex-bar {
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: rgba(167,139,250,0.05);
+      border: 1px solid rgba(167,139,250,0.15);
+      border-radius: 10px;
+    }
+    .chat-reindex-info {
+      font-size: 0.7rem; color: rgba(255,255,255,0.4);
+      margin-bottom: 8px; line-height: 1.4;
+    }
+    .chat-reindex-btn {
+      width: 100%; padding: 7px 0;
+      background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(59,130,246,0.2));
+      border: 1px solid rgba(167,139,250,0.35);
+      border-radius: 8px; color: #c4b5fd;
+      font-size: 0.78rem; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .chat-reindex-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(167,139,250,0.35), rgba(59,130,246,0.35));
+      box-shadow: 0 0 14px rgba(167,139,250,0.2);
+    }
+    .chat-reindex-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .chat-reindex-progress { margin-top: 10px; }
+    .chat-reindex-progress-bar {
+      height: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 4px; overflow: hidden; margin-bottom: 6px;
+    }
+    .chat-reindex-progress-fill {
+      height: 100%; width: 0%; border-radius: 4px;
+      background: linear-gradient(90deg, #a78bfa, #3b82f6);
+      transition: width 0.3s ease;
+    }
+    .chat-reindex-status {
+      font-size: 0.68rem; color: rgba(255,255,255,0.35);
+      text-align: center; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── Error Recovery Dialog ──────────────────────────── */
+    .error-recovery-content {
+      text-align: left;
+    }
+    .error-recovery-content .error-icon {
+      font-size: 2.5rem; text-align: center; margin-bottom: 14px;
+    }
+    .error-recovery-content .error-title {
+      font-size: 16px; font-weight: 700; color: var(--ds-red);
+      text-align: center; margin-bottom: 8px;
+    }
+    .error-recovery-content .error-msg {
+      font-size: 12px; color: var(--ds-text-dim); text-align: center;
+      margin-bottom: 16px; font-family: "SF Mono", monospace;
+      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px 12px;
+      word-break: break-all;
+    }
+    .error-recovery-content .troubleshoot-title {
+      font-size: 11px; font-weight: 700; color: var(--ds-amber);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 10px;
+    }
+    .error-recovery-content .troubleshoot-step {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--ds-border);
+      font-size: 12px; color: var(--ds-text); line-height: 1.5;
+    }
+    .error-recovery-content .troubleshoot-step:last-child { border-bottom: none; }
+    .error-recovery-content .step-num {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(251, 146, 60, 0.15); color: var(--ds-amber);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Google Drive Browser Panel ────────────────── */
+    .gdrive-panel {
+      position: fixed; inset: 0; z-index: 800;
+      display: flex; flex-direction: column;
+      background: #0a0f1e;
+      animation: fadeInUp 0.25s ease-out;
+    }
+    .gdrive-panel.hidden { display: none !important; }
+    .gdrive-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(59,130,246,0.2);
+      background: rgba(59,130,246,0.06);
+      flex-shrink: 0;
+    }
+    .gdrive-header-left { display: flex; align-items: center; gap: 12px; }
+    .gdrive-logo { font-size: 1.4rem; }
+    .gdrive-title { font-size: 0.95rem; font-weight: 700; color: #93c5fd; }
+    .gdrive-subtitle { font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: 1px; }
+    .gdrive-close {
+      background: none; border: none; color: rgba(255,255,255,0.4);
+      font-size: 1rem; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .gdrive-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .gdrive-toolbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .gdrive-breadcrumb {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.78rem; color: rgba(255,255,255,0.5);
+      flex: 1; overflow: hidden;
+    }
+    .gdrive-breadcrumb-item {
+      cursor: pointer; color: #93c5fd;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .gdrive-breadcrumb-item:hover { color: #bfdbfe; }
+    .gdrive-breadcrumb-sep { color: rgba(255,255,255,0.2); }
+    .gdrive-search-input {
+      width: 220px; padding: 6px 12px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      color: #e2e8f0; font-size: 0.78rem; outline: none;
+      transition: border-color 0.2s;
+    }
+    .gdrive-search-input:focus { border-color: rgba(59,130,246,0.5); }
+    .gdrive-search-input::placeholder { color: rgba(255,255,255,0.25); }
+    .gdrive-content {
+      flex: 1; overflow-y: auto;
+      padding: 16px 20px;
+    }
+    .gdrive-file-list {
+      display: grid; gap: 4px;
+    }
+    .gdrive-file-row {
+      display: grid;
+      grid-template-columns: 24px 1fr 120px 100px 100px;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 0.8rem;
+    }
+    .gdrive-file-row:hover { background: rgba(59,130,246,0.08); }
+    .gdrive-file-row.selected { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); }
+    .gdrive-file-icon { font-size: 1rem; text-align: center; }
+    .gdrive-file-name {
+      color: #e2e8f0; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .gdrive-file-name.folder { color: #93c5fd; }
+    .gdrive-file-size { color: rgba(255,255,255,0.35); font-size: 0.72rem; text-align: right; }
+    .gdrive-file-date { color: rgba(255,255,255,0.35); font-size: 0.72rem; }
+    .gdrive-file-action {
+      text-align: center;
+    }
+    .gdrive-organize-btn {
+      font-size: 0.68rem; padding: 3px 10px;
+      border-radius: 6px; border: 1px solid rgba(52,211,153,0.3);
+      background: rgba(52,211,153,0.1); color: var(--ds-emerald);
+      cursor: pointer; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .gdrive-organize-btn:hover {
+      background: rgba(52,211,153,0.2);
+      box-shadow: 0 0 10px rgba(52,211,153,0.15);
+    }
+    .gdrive-organize-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .gdrive-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.72rem; color: rgba(255,255,255,0.35);
+      flex-shrink: 0;
+    }
+    .gdrive-footer-actions { display: flex; gap: 8px; }
+    .gdrive-status-msg {
+      color: var(--ds-cyan); font-weight: 600;
+      animation: fadeInUp 0.15s ease;
+    }
+    /* Auth setup card */
+    .gdrive-auth-card {
+      text-align: center; padding: 48px 32px;
+      max-width: 480px; margin: 60px auto;
+    }
+    .gdrive-auth-icon { font-size: 3rem; margin-bottom: 16px; }
+    .gdrive-auth-title { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .gdrive-auth-desc {
+      font-size: 0.82rem; color: rgba(255,255,255,0.5);
+      line-height: 1.6; margin-bottom: 20px;
+    }
+    .gdrive-auth-input {
+      width: 100%; padding: 9px 14px; margin-bottom: 10px;
+      border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05); color: #e2e8f0;
+      font-size: 0.82rem; outline: none;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .gdrive-auth-input:focus { border-color: rgba(59,130,246,0.5); }
+    .gdrive-auth-input::placeholder { color: rgba(255,255,255,0.25); }
+    .gdrive-auth-hint {
+      font-size: 0.7rem; color: rgba(255,255,255,0.3);
+      line-height: 1.5; margin-top: 12px; text-align: left;
+    }
+    .gdrive-auth-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+    /* Classify progress overlay within Drive panel */
+    .gdrive-classifying {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.72rem; color: var(--ds-amber);
+    }
+    .gdrive-classifying .spinner { width: 10px; height: 10px; border-width: 1.5px; }
+    /* Column headers */
+    .gdrive-col-header {
+      display: grid;
+      grid-template-columns: 24px 1fr 120px 100px 100px;
+      gap: 10px;
+      padding: 4px 12px 8px;
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 4px;
+    }
+    .gdrive-col-header span:nth-child(3),
+    .gdrive-col-header span:nth-child(4) { text-align: right; }
+    .gdrive-col-header span:nth-child(5) { text-align: center; }
+
+    /* ── Background Learner Indicator ──────────────────────── */
+    #learnerIndicator {
+      position: fixed;
+      bottom: 14px;
+      right: 18px;
+      z-index: 8000;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(15, 23, 42, 0.82);
+      border: 1px solid rgba(81, 242, 251, 0.22);
+      border-radius: 99px;
+      padding: 5px 12px 5px 9px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      pointer-events: none;
+      user-select: none;
+    }
+    #learnerIndicator.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .learner-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #51f2fb;
+      flex-shrink: 0;
+      animation: learnerPulse 2s ease-in-out infinite;
+    }
+    @keyframes learnerPulse {
+      0%, 100% { opacity: 1;   transform: scale(1);    }
+      50%       { opacity: 0.4; transform: scale(0.75); }
+    }
+    #learnerIndicator.paused .learner-dot {
+      background: rgba(255,255,255,0.25);
+      animation: none;
+    }
+    #learnerStats {
+      color: rgba(255,255,255,0.35);
+      font-size: 10px;
+      margin-left: 2px;
+    }
+
+    /* ── Disambiguation Overlay ─────────────────────────────── */
+    .disambig-overlay {
+      position: fixed; inset: 0; z-index: 9800;
+      background: rgba(2, 6, 23, 0.88);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      display: flex; align-items: center; justify-content: center;
+      animation: disambigFadeIn 0.22s ease;
+    }
+    .disambig-overlay.hidden { display: none; }
+    @keyframes disambigFadeIn {
+      from { opacity: 0; transform: scale(0.97); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .disambig-card {
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(167, 139, 250, 0.28);
+      border-radius: 22px;
+      padding: 36px 40px 32px;
+      width: 540px;
+      max-width: 92vw;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(81,242,251,0.06);
+    }
+    .disambig-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(167, 139, 250, 0.15);
+      border: 1px solid rgba(167, 139, 250, 0.35);
+      border-radius: 99px;
+      padding: 4px 14px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+      color: #c4b5fd; text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .disambig-badge::before { content: "⚡"; font-size: 12px; }
+    .disambig-filename {
+      font-size: 17px; font-weight: 700; color: #fff;
+      margin-bottom: 6px;
+      word-break: break-all;
+      line-height: 1.3;
+    }
+    .disambig-reason {
+      font-size: 12.5px; color: rgba(255,255,255,0.45);
+      margin-bottom: 26px; line-height: 1.5;
+    }
+    .disambig-choices {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+      margin-bottom: 22px;
+    }
+    .disambig-choice-btn {
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 16px 14px 14px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.18s, background 0.18s, transform 0.12s;
+      color: inherit;
+    }
+    .disambig-choice-btn:hover {
+      border-color: rgba(81, 242, 251, 0.55);
+      background: rgba(81, 242, 251, 0.07);
+      transform: translateY(-1px);
+    }
+    .disambig-choice-btn.selected {
+      border-color: #51f2fb;
+      background: rgba(81, 242, 251, 0.12);
+    }
+    .disambig-choice-name {
+      font-size: 15px; font-weight: 700; color: #fff;
+      margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .disambig-choice-conf {
+      font-size: 11px; font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      background: rgba(255,255,255,0.07);
+      border-radius: 6px; padding: 2px 7px;
+      margin-left: auto; white-space: nowrap;
+    }
+    .disambig-keywords {
+      display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px;
+    }
+    .disambig-kw {
+      font-size: 10.5px; background: rgba(255,255,255,0.08);
+      border-radius: 5px; padding: 2px 8px;
+      color: rgba(255,255,255,0.55);
+    }
+    .disambig-kw.highlight {
+      background: rgba(81,242,251,0.15);
+      color: #51f2fb;
+    }
+    .disambig-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding-top: 18px; gap: 12px;
+    }
+    .disambig-footer-note {
+      font-size: 11px; color: rgba(255,255,255,0.28); flex: 1; line-height: 1.4;
+    }
+    .disambig-confirm-btn {
+      background: linear-gradient(135deg, #51f2fb 0%, #a78bfa 100%);
+      color: #000; font-weight: 700; font-size: 13px;
+      border: none; border-radius: 10px;
+      padding: 10px 24px; cursor: pointer;
+      transition: opacity 0.2s, transform 0.12s;
+      white-space: nowrap;
+    }
+    .disambig-confirm-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .disambig-confirm-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+    .disambig-skip-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.45); font-size: 12px;
+      border-radius: 8px; padding: 8px 16px;
+      cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    }
+    .disambig-skip-btn:hover { border-color: rgba(255,255,255,0.35); color: rgba(255,255,255,0.7); }
+  </style>
+</head>
+<body>
+
+  <!-- Auto-Update Banner (shown/hidden by JS) -->
+  <div class="update-banner hidden" id="updateBanner">
+    <span class="update-dot"></span>
+    <span id="updateBannerText">An update is available — downloading in background...</span>
+  </div>
+
+  <!-- Low-RAM Warning Banner -->
+  <div class="ram-banner hidden" id="ramWarningBanner" role="alert">
+    <span class="ram-banner-icon">⚠️</span>
+    <span id="ramBannerText">AI features are paused — your computer is low on memory. Close other apps to free up RAM.</span>
+    <button class="ram-banner-btn" id="ramBannerRetryBtn">Retry AI</button>
+    <button class="ram-banner-close" id="ramBannerDismissBtn" aria-label="Dismiss">✕</button>
+  </div>
+
+  <!-- Header -->
+  <div class="header" id="appHeader">
+    <h1>AI Organizer</h1>
+    <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="Application mode">
+      <button class="mode-btn active" id="personalModeBtn" role="tab" aria-selected="true" aria-label="Switch to Personal mode">🏠 Personal</button>
+      <button class="mode-btn" id="workModeBtn" role="tab" aria-selected="false" aria-label="Switch to Work mode">🏢 Work</button>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-primary btn-sm" id="selectFilesBtn" aria-label="Select files to classify">Select Files</button>
+      <button class="btn btn-primary btn-sm" id="selectFolderBtn" aria-label="Select folder to classify">Select Folder</button>
+      <button class="btn btn-ghost btn-sm" id="scanAllBtn" aria-label="Scan all files recursively">Scan All Files</button>
+      <button class="btn btn-success btn-sm" id="newCategoryBtn" aria-label="Create a new category folder">+ New Category</button>
+      <button class="btn btn-primary btn-sm" id="scanBtn" aria-label="Scan destination for existing folders">Scan Now</button>
+      <button class="btn btn-ghost btn-sm" id="settingsBtn" aria-label="Open settings">Settings</button>
+      <button class="btn btn-ghost btn-sm btn-undo" id="undoBtn" title="Undo last file move" aria-label="Undo last file move" disabled>↩</button>
+      <button class="btn btn-ghost btn-sm btn-undo" id="redoBtn" title="Redo last undo" aria-label="Redo last undo" disabled>↪</button>
+      <button class="btn btn-sm" id="gdriveBtn" title="Browse & organize Google Drive files"
+        style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;font-weight:600;"
+        aria-label="Open Google Drive browser">📁 Drive</button>
+      <button class="btn btn-chat btn-sm" id="chatBtn" title="Ask AI about your files" aria-label="Open AI chat assistant">💬 Ask AI</button>
+      <div class="status" role="status" aria-live="polite">
+        <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+        <span id="statusText">Starting...</span>
+      </div>
+      <span class="icloud-badge" id="icloudBadge">☁️ iCloud Synced</span>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Destination banner -->
+    <div class="dest-banner" id="destBanner">
+      <span id="destBannerText">Sorting to: <strong>~/Desktop/AI_SORTED_FILES</strong></span>
+    </div>
+
+    <!-- Work Mode: Folder Watcher bar (shown only in Work Mode) -->
+    <div class="watcher-bar hidden" id="watcherBar">
+      <div class="watcher-bar-left">
+        <span class="watcher-dot" id="watcherDot"></span>
+        <span class="watcher-label" id="watcherLabel">Auto-Organize: Off</span>
+        <span class="watcher-folders" id="watcherFolders"></span>
+      </div>
+      <div class="watcher-bar-right">
+        <button class="btn btn-ghost btn-sm" id="watcherAddBtn">+ Watch Folder</button>
+        <button class="btn btn-sm" id="watcherToggleBtn">Enable</button>
+      </div>
+    </div>
+
+    <!-- Cloud Connectors bar -->
+    <div class="cloud-bar hidden" id="cloudBar">
+      <div class="cloud-bar-left">
+        <span style="font-size:14px;">☁️</span>
+        <span class="cloud-bar-label">Cloud Sync</span>
+        <span id="cloudChips"></span>
+      </div>
+      <div class="cloud-bar-right">
+        <button class="btn btn-ghost btn-sm" id="cloudSettingsBtn">Configure</button>
+        <button class="btn btn-primary btn-sm" id="cloudSyncNowBtn">Sync Now</button>
+      </div>
+    </div>
+    <div class="cloud-sync-progress hidden" id="cloudSyncProgress">
+      <div class="cloud-sync-progress-fill" id="cloudSyncFill" style="width:0%"></div>
+    </div>
+
+    <!-- Neural Omnibar -->
+    <div class="search-bar">
+      <input type="text" id="deepSearchInput" aria-label="Search files or ask AI a question" placeholder="🔍 Search files or ask a question (e.g., 'budget report', 'Why is this file here?')...">
+    </div>
+
+    <!-- Neural Answer Card (rendered by JS) -->
+    <div id="neuralAnswerContainer"></div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-card"><div class="label">Files</div><div class="value" id="statFiles">0</div></div>
+      <div class="stat-card"><div class="label">Folders</div><div class="value" id="statFolders">0</div></div>
+      <div class="stat-card"><div class="label">Review</div><div class="value" id="statReview">0</div></div>
+      <div class="stat-card"><div class="label">Corrections</div><div class="value" id="statCorrections">0</div></div>
+    </div>
+
+    <!-- Classification Results table -->
+    <div id="tableContainer">
+      <div class="empty-state">
+        <p>Click <strong>Select Files</strong> to pick files (all types allowed).</p>
+        <p>Nothing moves until you click <strong>Confirm</strong> or <strong>Organize All</strong>.</p>
+      </div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar hidden" id="actionBar">
+      <button class="btn btn-primary btn-sm" id="selectAllBtn" aria-label="Select all classified files">Select All</button>
+      <button class="btn btn-primary btn-sm" id="deselectAllBtn" aria-label="Deselect all files">Deselect All</button>
+      <div class="count" id="countLabel" aria-live="polite">0 files selected</div>
+      <button class="btn btn-danger btn-sm" id="cancelBtn" aria-label="Clear all files from queue">Cancel</button>
+      <button class="btn btn-success btn-sm" id="confirmBtn" aria-label="Move only approved files">Confirm</button>
+      <button class="btn btn-organize" id="organizeBtn" aria-label="Move all classified files">Organize All</button>
+    </div>
+
+    <!-- Activity feed -->
+    <div class="feed" id="feed" role="log" aria-live="polite" aria-label="Activity feed"></div>
+  </div>
+
+  <!-- AI Rename Modal -->
+  <div class="settings-overlay hidden" id="renameOverlay" role="dialog" aria-modal="true" aria-label="AI Rename">
+    <div class="settings-panel" style="width:480px;">
+      <h2>🏷️ AI Rename</h2>
+      <p style="font-size:12px;color:#aaa;margin-bottom:14px;">
+        The AI reads the file content and suggests a clean, professional filename.
+      </p>
+      <div class="rename-row">
+        <div class="rename-label">Original</div>
+        <div class="rename-original" id="renameOriginal">—</div>
+      </div>
+      <div class="rename-arrow">↓ AI Suggestion</div>
+      <div class="rename-row">
+        <div class="rename-label">New name</div>
+        <input type="text" id="renameInput" class="rename-input" placeholder="Generating…" />
+      </div>
+      <div class="rename-confidence hidden" id="renameConfidence"></div>
+      <div class="rename-spinner hidden" id="renameSpinner">
+        <span class="spinner"></span> Asking AI…
+      </div>
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="renameCancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="renameApplyBtn" disabled>Apply Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div class="settings-overlay hidden" id="settingsOverlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-panel">
+      <h2>Settings</h2>
+      <div class="s-row"><span class="s-label">pdf-parse</span><span class="s-val" id="capPdf">...</span></div>
+      <div class="s-row"><span class="s-label">mammoth (DOCX)</span><span class="s-val" id="capMammoth">...</span></div>
+      <div class="s-row"><span class="s-label">adm-zip (Office)</span><span class="s-val" id="capAdmZip">...</span></div>
+      <div class="s-row"><span class="s-label">tesseract.js (OCR)</span><span class="s-val" id="capTesseract">...</span></div>
+      <div class="s-row"><span class="s-label">Corrections</span><span class="s-val" id="capCorr">...</span></div>
+      <div class="s-row"><span class="s-label">Noise folders</span><span class="s-val" id="capNoise" style="color:#aaa;font-weight:400;font-size:11px;max-width:240px;text-align:right;">...</span></div>
+      <div class="s-actions">
+        <button class="btn btn-danger btn-sm" id="clearLearningBtn">Clear Learning</button>
+        <button class="btn btn-primary btn-sm" id="refreshFpBtn">Refresh Fingerprints</button>
+        <button class="btn btn-success btn-sm" id="closeSettingsBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Category dialog (replaces window.prompt which is broken in Electron) -->
+  <div class="settings-overlay hidden" id="newCatOverlay" role="dialog" aria-modal="true" aria-label="New Category">
+    <div class="settings-panel" style="width:360px;">
+      <h2>New Category</h2>
+      <p style="font-size:13px;color:#aaa;margin-bottom:12px;">
+        Enter a name for the new folder (e.g. Biology, Math, FBLA):
+      </p>
+      <input type="text" id="newCatInput" placeholder="Category name..."
+        style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid #0f3460;
+        background:#1a1a2e;color:#eaeaea;font-size:14px;outline:none;margin-bottom:14px;">
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="newCatCancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="newCatOkBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- Admin footer icon -->
+  <div class="admin-footer" id="adminFooter">⚙️</div>
+
+  <!-- Boss Dashboard — Personal Mode (simple) -->
+  <div class="settings-overlay hidden" id="bossDashOverlay" role="dialog" aria-modal="true" aria-label="Dashboard">
+    <div class="settings-panel" style="width:520px; max-height:85vh; overflow-y:auto;">
+      <h2 id="bossDashTitle">Dashboard</h2>
+      <div id="bossDashContent"></div>
+      <div class="s-actions" id="bossDashActions">
+        <button class="btn btn-primary btn-sm" id="exportKnowledgeBtn">Export Knowledge Graph</button>
+        <button class="btn btn-danger btn-sm" id="exportLogBtn">Download Compliance Log</button>
+        <button class="btn btn-success btn-sm" id="exitBossDashBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enterprise Retention Rules Modal (Work Mode only) -->
+  <div class="settings-overlay hidden" id="retentionOverlay" role="dialog" aria-modal="true" aria-label="Retention Policies">
+    <div class="settings-panel" style="width:540px; max-height:85vh; overflow-y:auto;">
+      <h2>⏱ Retention Policies</h2>
+      <p style="font-size:12px;color:#aaa;margin-bottom:14px;">Files older than the threshold in the specified folder will be flagged in the compliance report.</p>
+      <div id="retentionRulesList"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div>
+            <div style="font-size:10px;color:#aaa;margin-bottom:4px;text-transform:uppercase">Folder</div>
+            <select id="retentionFolderSel" class="cat-select" style="min-width:130px"></select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#aaa;margin-bottom:4px;text-transform:uppercase">Max Age (days)</div>
+            <input type="number" id="retentionDaysInput" value="2555" min="1"
+              style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:#eee;font-size:12px;outline:none;">
+          </div>
+          <div style="flex:1">
+            <div style="font-size:10px;color:#aaa;margin-bottom:4px;text-transform:uppercase">Label</div>
+            <input type="text" id="retentionLabelInput" placeholder="e.g. Client Files — 7yr retention"
+              style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:#eee;font-size:12px;outline:none;">
+          </div>
+          <button class="btn btn-success btn-sm" id="retentionAddBtn">Add Rule</button>
+        </div>
+      </div>
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="retentionCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enterprise LAN Config Modal (Work Mode only) -->
+  <div class="settings-overlay hidden" id="lanConfigOverlay" role="dialog" aria-modal="true" aria-label="LAN Configuration">
+    <div class="settings-panel" style="width:480px;">
+      <h2>🌐 LAN / Multi-Seat Config</h2>
+      <p style="font-size:12px;color:#aaa;margin-bottom:16px;">
+        Point all workstations to a shared Ollama server on your network.<br>
+        Everyone organizes into the same shared drive — no cloud required.
+      </p>
+      <div class="s-row">
+        <span class="s-label">Ollama Server URL</span>
+        <input type="text" id="lanOllamaUrl" placeholder="http://192.168.1.100:11434"
+          style="flex:1;margin-left:12px;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:#eee;font-size:12px;outline:none;">
+      </div>
+      <div class="s-row" style="margin-top:10px;">
+        <span class="s-label" style="font-size:11px;color:#aaa;line-height:1.4;">Shared Drive</span>
+        <span style="flex:1;margin-left:12px;font-size:11px;color:#aaa;line-height:1.5;">
+          Point all users to the same network drive in Work Mode (iCloud, Samba, NFS, etc.).<br>
+          The app organizes into that shared folder automatically.
+        </span>
+      </div>
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="lanCancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="lanSaveBtn">Save & Restart AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Chat Panel ─────────────────────────────────────── -->
+  <div class="chat-overlay hidden" id="chatOverlay"></div>
+  <div class="chat-panel hidden" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <span class="chat-icon">💬</span>
+        <div>
+          <div class="chat-title">Ask AI</div>
+          <div class="chat-subtitle" id="chatSubtitle">Find files, ask questions, get answers</div>
+        </div>
+      </div>
+      <button class="chat-close" id="chatCloseBtn" aria-label="Close chat panel">✕</button>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-welcome">
+        <div class="chat-welcome-icon">🗂️</div>
+        <div class="chat-welcome-title">Your file assistant</div>
+        <div class="chat-welcome-body">Ask me anything about your organized files. I know what's been sorted and where it lives.</div>
+        <div class="chat-suggestions">
+          <button class="chat-suggestion" data-q="What files do I have about chemistry?">What files do I have about chemistry?</button>
+          <button class="chat-suggestion" data-q="Find everything related to taxes">Find everything related to taxes</button>
+          <button class="chat-suggestion" data-q="Show me my most recent documents">Show me my most recent documents</button>
+          <button class="chat-suggestion" data-q="What folders am I using?">What folders am I using?</button>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <input
+          type="text"
+          id="chatInput"
+          class="chat-input"
+          aria-label="Type a message to the AI assistant"
+          placeholder="Ask about your files..."
+          autocomplete="off"
+        />
+        <button class="chat-send-btn" id="chatSendBtn" title="Send" aria-label="Send message">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+      <div class="chat-hint">Powered by your local AI — no internet, no API keys</div>
+      <!-- Reindex bar -->
+      <div class="chat-reindex-bar" id="chatReindexBar">
+        <div class="chat-reindex-info" id="chatReindexInfo">
+          Index your existing organized files so AI can search them.
+        </div>
+        <button class="chat-reindex-btn" id="chatReindexBtn">⚡ Index Existing Files</button>
+        <div class="chat-reindex-progress hidden" id="chatReindexProgress">
+          <div class="chat-reindex-progress-bar">
+            <div class="chat-reindex-progress-fill" id="chatReindexFill"></div>
+          </div>
+          <div class="chat-reindex-status" id="chatReindexStatus">Scanning…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud Connectors Settings Modal -->
+  <div class="settings-overlay hidden" id="cloudOverlay" role="dialog" aria-modal="true" aria-label="Cloud Storage Connectors">
+    <div class="settings-panel" style="width:500px; max-height:85vh; overflow-y:auto;">
+      <h2>☁️ Cloud Storage Connectors</h2>
+      <p style="font-size:12px;color:#aaa;margin-bottom:16px;">
+        Sync your organized files to Google Drive or iCloud automatically.
+        Files are <strong style="color:var(--ds-emerald)">copied</strong> to cloud — your local files stay untouched.
+      </p>
+      <div id="cloudConnectorsList"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="cloudDetectBtn">🔍 Re-detect Providers</button>
+        <button class="btn btn-ghost btn-sm" id="cloudSyncLogBtn">📋 Sync Log</button>
+      </div>
+      <div id="cloudSyncLogPanel" class="hidden" style="margin-top:12px;max-height:160px;overflow-y:auto;font-size:11px;color:var(--ds-text-dim);background:rgba(0,0,0,0.2);border-radius:8px;padding:10px;"></div>
+      <div class="s-actions">
+        <button class="btn btn-success btn-sm" id="cloudCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin PIN dialog -->
+  <div class="settings-overlay hidden" id="adminPinOverlay" role="dialog" aria-modal="true" aria-label="Admin Access">
+    <div class="settings-panel" style="width:320px;">
+      <h2>Admin Access</h2>
+      <p style="font-size:13px;color:#aaa;margin-bottom:12px;">Enter Admin PIN:</p>
+      <input type="password" id="adminPinInput" placeholder="PIN..."
+        style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid #0f3460;
+        background:#1a1a2e;color:#eaeaea;font-size:14px;outline:none;margin-bottom:14px;">
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="adminPinCancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="adminPinOkBtn">Enter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Recovery Dialog (Ollama failure) -->
+  <div class="settings-overlay hidden" id="errorRecoveryOverlay" role="alertdialog" aria-modal="true" aria-label="AI Engine Error">
+    <div class="settings-panel" style="width:480px;">
+      <div class="error-recovery-content">
+        <div class="error-icon">⚠️</div>
+        <div class="error-title">AI Engine Failed to Start</div>
+        <div class="error-msg" id="errorRecoveryMsg">Unknown error</div>
+        <div class="troubleshoot-title">Troubleshooting Steps</div>
+        <div class="troubleshoot-step">
+          <div class="step-num">1</div>
+          <div>Check that <strong style="color:var(--ds-cyan)">Ollama</strong> is installed on your system. Download it from <strong>ollama.com</strong> if not.</div>
+        </div>
+        <div class="troubleshoot-step">
+          <div class="step-num">2</div>
+          <div>Ensure no other Ollama instance is running. Try quitting Ollama from the menu bar, then relaunch AI Organizer.</div>
+        </div>
+        <div class="troubleshoot-step">
+          <div class="step-num">3</div>
+          <div>Check available RAM — the AI model needs at least <strong style="color:var(--ds-cyan)">4 GB</strong> of free memory. Close heavy applications and retry.</div>
+        </div>
+        <div class="troubleshoot-step">
+          <div class="step-num">4</div>
+          <div>If the issue persists, try running <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-size:11px;">ollama serve</code> in Terminal to see detailed error logs.</div>
+        </div>
+      </div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-ghost btn-sm" id="errorRecoveryDismissBtn" aria-label="Dismiss error and continue without AI">Continue Without AI</button>
+        <button class="btn btn-primary btn-sm" id="errorRecoveryRetryBtn" aria-label="Retry starting the AI engine">Retry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Drive Browser Panel -->
+  <div class="gdrive-panel hidden" id="gdrivePanel" role="dialog" aria-modal="true" aria-label="Google Drive Browser">
+    <div class="gdrive-header">
+      <div class="gdrive-header-left">
+        <span class="gdrive-logo">📁</span>
+        <div>
+          <div class="gdrive-title">Google Drive</div>
+          <div class="gdrive-subtitle" id="gdriveSubtitle">Browse and organize your Drive files with AI</div>
+        </div>
+      </div>
+      <button class="gdrive-close" id="gdriveCloseBtn" aria-label="Close Google Drive panel">✕</button>
+    </div>
+    <div class="gdrive-toolbar">
+      <div class="gdrive-breadcrumb" id="gdriveBreadcrumb">
+        <span class="gdrive-breadcrumb-item" data-id="root">My Drive</span>
+      </div>
+      <input type="text" class="gdrive-search-input" id="gdriveSearchInput"
+        placeholder="Search Drive files..." aria-label="Search Google Drive files">
+      <button class="btn btn-primary btn-sm" id="gdriveOrganizeAllBtn" aria-label="Organize all selected files">
+        Organize Selected
+      </button>
+    </div>
+    <div class="gdrive-content" id="gdriveContent">
+      <!-- Auth card or file list rendered by JS -->
+    </div>
+    <div class="gdrive-footer">
+      <span id="gdriveFooterStatus">Not connected</span>
+      <div class="gdrive-footer-actions">
+        <button class="btn btn-ghost btn-sm" id="gdriveRefreshBtn" aria-label="Refresh file list">Refresh</button>
+        <button class="btn btn-ghost btn-sm" id="gdriveLogoutBtn" aria-label="Sign out of Google Drive">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drag & Drop Overlay -->
+  <div class="drop-overlay" id="dropOverlay">
+    <div class="drop-zone">
+      <div class="drop-zone-icon">📂</div>
+      <div class="drop-zone-text">Drop files to organize</div>
+      <div class="drop-zone-hint">Release to add files for classification</div>
+    </div>
+  </div>
+
+  <!-- Onboarding Wizard -->
+  <div class="onboarding-overlay hidden" id="onboardingOverlay" role="dialog" aria-modal="true" aria-label="Welcome wizard">
+    <div class="onboarding-card" id="onboardingCard">
+      <!-- Content rendered by JS -->
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Reference -->
+  <div class="settings-overlay hidden" id="shortcutsOverlay" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
+    <div class="settings-panel" style="width:420px;">
+      <h2>Keyboard Shortcuts</h2>
+      <div class="shortcut-row"><span class="shortcut-label">Open Files</span><span class="shortcut-key">⌘O</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Open Folder</span><span class="shortcut-key">⌘⇧O</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">New Category</span><span class="shortcut-key">⌘N</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Undo</span><span class="shortcut-key">⌘Z</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Redo</span><span class="shortcut-key">⌘⇧Z</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Settings</span><span class="shortcut-key">⌘,</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Search</span><span class="shortcut-key">⌘F</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Ask AI</span><span class="shortcut-key">⌘⇧A</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Personal Mode</span><span class="shortcut-key">⌘1</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Work Mode</span><span class="shortcut-key">⌘2</span></div>
+      <div class="shortcut-row"><span class="shortcut-label">Cloud Sync</span><span class="shortcut-key">⌘⇧S</span></div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-success btn-sm" id="shortcutsCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy Policy Modal -->
+  <div class="settings-overlay hidden" id="privacyOverlay" role="dialog" aria-modal="true" aria-label="Privacy Policy">
+    <div class="settings-panel" style="width:520px; max-height:80vh; overflow-y:auto;">
+      <h2>Privacy Policy</h2>
+      <div style="font-size:12px;color:var(--ds-text);line-height:1.7;">
+        <p style="margin-bottom:10px;"><strong>Last updated:</strong> February 2026</p>
+        <p style="margin-bottom:10px;"><strong>AI Organizer</strong> (System Janitor) is designed with privacy as a core principle. Here is how your data is handled:</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Local Processing</strong><br>
+        All file classification and AI processing happens entirely on your device using a bundled AI model (Ollama). No file contents are ever uploaded to any server.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Data We Collect</strong><br>
+        License validation requires your license key to be verified against our server. No file names, contents, or personal data are transmitted during this process.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">External API Calls</strong><br>
+        The Semantic Knowledge feature sends only category folder names (not file contents) to Datamuse and Wikipedia APIs to fetch related keywords. This is optional and user-initiated.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Cloud Sync</strong><br>
+        If enabled, files are copied to your own cloud storage (Google Drive or iCloud) via local sync folders. We never access your cloud accounts directly.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">No Telemetry</strong><br>
+        We do not collect usage analytics, crash reports, or any telemetry data. The app operates fully offline except for license validation and optional knowledge expansion.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Data Storage</strong><br>
+        All settings, learning data, and audit logs are stored locally on your device in the application data directory. You can delete them at any time via Settings.</p>
+        <p>For questions, contact: <strong>privacy@systemjanitor.app</strong></p>
+      </div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-success btn-sm" id="privacyCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms of Service Modal -->
+  <div class="settings-overlay hidden" id="termsOverlay" role="dialog" aria-modal="true" aria-label="Terms of Service">
+    <div class="settings-panel" style="width:520px; max-height:80vh; overflow-y:auto;">
+      <h2>Terms of Service</h2>
+      <div style="font-size:12px;color:var(--ds-text);line-height:1.7;">
+        <p style="margin-bottom:10px;"><strong>Last updated:</strong> February 2026</p>
+        <p style="margin-bottom:8px;">By using AI Organizer (System Janitor), you agree to the following terms:</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">License</strong><br>
+        A valid license key is required to organize files. Each license is for a single user. Redistribution or sharing of license keys is prohibited.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Your Files</strong><br>
+        You retain full ownership of all files processed by the app. We never access, store, or claim rights to your files. The app operates on your local filesystem only.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">AI Classification</strong><br>
+        File classification is performed by a local AI model. Results are suggestions only and may not always be accurate. You should review classifications before confirming file moves.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Limitation of Liability</strong><br>
+        The software is provided "as is" without warranty. We are not responsible for data loss resulting from file operations. The undo feature allows reversing recent moves, but we recommend maintaining backups of important files.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Updates</strong><br>
+        The app may automatically download updates to improve functionality and security. You can control this in your system settings.</p>
+        <p style="margin-bottom:8px;"><strong style="color:var(--ds-cyan)">Termination</strong><br>
+        We reserve the right to revoke license keys that violate these terms. Upon revocation, the app will continue to function in read-only mode without organizing capabilities.</p>
+        <p>For questions, contact: <strong>legal@systemjanitor.app</strong></p>
+      </div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-success btn-sm" id="termsCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Download Overlay (first launch, model not yet cached) -->
+  <div class="model-dl-overlay hidden" id="modelDownloadOverlay" role="dialog" aria-modal="true" aria-label="Downloading AI model">
+    <div class="model-dl-card">
+      <div class="model-dl-icon">🧠</div>
+      <h2 class="model-dl-title">Setting up AI brain</h2>
+      <p class="model-dl-sub">
+        Downloading the local AI model — this happens once.<br>
+        <strong id="modelDlName" style="color:var(--ds-cyan);font-size:12px;"></strong>
+      </p>
+      <div class="model-dl-progress-wrap">
+        <div class="model-dl-progress-bar" id="modelDlBar" style="width:0%"></div>
+      </div>
+      <p class="model-dl-pct" id="modelDlPct">0%</p>
+      <p class="model-dl-status" id="modelDlStatus">Connecting to Ollama...</p>
+      <button class="model-dl-retry hidden" id="modelDlRetryBtn">Try Again</button>
+    </div>
+  </div>
+
+  <!-- Search Index Upgrade Banner (shown silently on startup when fullText is missing) -->
+  <div id="searchUpgradeBanner" class="hidden" aria-live="polite">
+    <span id="searchUpgradeLabel">Upgrading search index...</span>
+    <div class="sub-progress-bar-wrap">
+      <div class="sub-progress-bar" id="searchUpgradeBar" style="width:0%"></div>
+    </div>
+    <span class="sub-pct" id="searchUpgradePct"></span>
+  </div>
+
+  <!-- System Requirements Modal (first launch only) -->
+  <div class="settings-overlay hidden" id="sysCheckOverlay" role="dialog" aria-modal="true" aria-label="System Requirements">
+    <div class="settings-panel" style="width:500px;">
+      <div class="s-header"><h2 class="s-title">Welcome to AI Organizer</h2></div>
+      <p style="color:var(--ds-text-muted);font-size:13px;margin:0 0 20px;">
+        Let's make sure your system is ready. AI features work best with a little extra memory.
+        Everything still works if a check is yellow — AI classification is just smarter with more RAM.
+      </p>
+      <div id="sysCheckList" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
+        <!-- Rows injected by JS -->
+      </div>
+      <div class="s-actions">
+        <button class="btn btn-primary" id="sysCheckCloseBtn">Got it, let's start!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Background Learner Indicator — subtle pill shown during idle learning -->
+  <div id="learnerIndicator" title="AI is learning from your organized files in the background">
+    <span class="learner-dot"></span>
+    <span id="learnerLabel">Learning…</span>
+    <span id="learnerStats"></span>
+  </div>
+
+  <!-- Disambiguation Overlay — shown when AI confidence < 80% with two candidates -->
+  <div class="disambig-overlay hidden" id="disambigOverlay" role="dialog" aria-modal="true" aria-label="Help AI choose a folder">
+    <div class="disambig-card">
+      <div class="disambig-badge">AI needs your help</div>
+      <p class="disambig-filename" id="disambigFilename">filename.pdf</p>
+      <p class="disambig-reason" id="disambigReason">The AI found this file could fit in two folders. Pick the right one and it'll learn from your choice.</p>
+
+      <div class="disambig-choices" id="disambigChoices">
+        <!-- Two choice buttons injected by JS -->
+      </div>
+
+      <div class="disambig-footer">
+        <p class="disambig-footer-note">💾 Your choice is saved to Learning Data for future training.</p>
+        <button class="disambig-skip-btn" id="disambigSkipBtn">Skip</button>
+        <button class="disambig-confirm-btn" id="disambigConfirmBtn" disabled>Confirm →</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

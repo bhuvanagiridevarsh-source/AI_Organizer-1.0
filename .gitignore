@@ -1,0 +1,43 @@
+# Built app output
+dist/
+FINAL_APP_FOLDER/
+out/
+
+# Node modules
+node_modules/
+
+# AI model (too large for GitHub — stored separately)
+resources/models/*.gguf
+resources/models/blobs/
+resources/models/manifests/
+resources_new/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS junk
+.DS_Store
+*.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment / secrets
+.env
+.env.local
+*.pem
+*.cer
+
+# Electron build artifacts
+*.blockmap
+builder-debug.yml
+builder-effective-config.yaml
+
+# Test / temp folders
+test_folder/
+training_data/
+wizard_state.json
+feedback.json
