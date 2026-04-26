@@ -1,0 +1,90 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"          # Runs when you push a tag like v1.0.1
+  workflow_dispatch:  # Also lets you trigger manually from GitHub
+
+jobs:
+  # ── macOS (Apple Silicon) ──────────────────────────────────
+  build-mac:
+    runs-on: macos-14   # macos-14 = M1 runner (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native modules for Electron (macOS arm64)
+        run: npx electron-rebuild -f -w node-llama-cpp
+
+      - name: Build macOS app
+        run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+
+  # ── Windows ────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Visual Studio Build Tools (for node-llama-cpp)
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild native modules for Electron (Windows)
+        run: npx electron-rebuild -f -w node-llama-cpp
+
+      - name: Build Windows app
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-build
+          path: |
+            dist/*.exe
+            dist/latest.yml
+
+  # ── Attach builds to GitHub Release ───────────────────────
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            mac-build/*
+            win-build/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

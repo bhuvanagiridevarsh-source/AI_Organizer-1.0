@@ -242,6 +242,50 @@ const {
   clearMemory,
 } = require("./services/LearningService");
 
+// Prompt-Based Reorganization
+const {
+  scanDirectory: prScanDirectory,
+  analyzeWithAI: prAnalyzeWithAI,
+  buildPreview: prBuildPreview,
+  buildPreviewLean: prBuildPreviewLean,
+  executePreview: prExecutePreview,
+  undoOperation: prUndoOperation,
+  getHistory: prGetHistory,
+  runFullPipeline: prRunFullPipeline,
+  scanLean: prScanLean,
+} = require("./services/PromptReorgService");
+
+// Undo Log (persistent, all operations)
+const {
+  recordOperation: undoLogRecord,
+  undoOperation: undoLogUndo,
+  getUndoLog,
+  clearUndoLog,
+} = require("./services/UndoLogService");
+
+// Organization Templates
+const {
+  getAllTemplates,
+  recordTemplateUse,
+  saveCustomTemplate,
+  deleteCustomTemplate,
+} = require("./services/TemplateService");
+
+// Scan Cache
+const {
+  getCacheStats: getScanCacheStats,
+  invalidateCacheEntry: invalidateScanCache,
+} = require("./services/ScanCacheService");
+
+// AI Health Monitor
+const {
+  startHealthMonitor: startAIHealthMonitor,
+  stopHealthMonitor: stopAIHealthMonitor,
+  getAIStatus,
+  markModelReady: aiHealthMarkReady,
+  markModelError: aiHealthMarkError,
+} = require("./services/AIHealthService");
+
 // Pool Enrichment (wires corrections → pool terms)
 const { bulkEnrichFromHistory } = require("./services/PoolEnrichmentService");
 
@@ -379,14 +423,18 @@ app.whenReady().then(async () => {
         if (result.success) {
           console.log("[main] AI model ready.");
           mainWindow?.webContents.send("model:ready");
+          aiHealthMarkReady();
+          startAIHealthMonitor();
         } else {
           console.error(`[main] Model load failed: ${result.error}`);
           mainWindow?.webContents.send("model:error", result.error);
+          aiHealthMarkError();
           _showModelErrorDialog(result.error);
         }
       }).catch((err) => {
         console.error(`[main] Model initialize() threw: ${err.message}`);
         mainWindow?.webContents.send("model:error", err.message);
+        aiHealthMarkError();
         _showModelErrorDialog(err.message);
       });
     } else {
@@ -408,12 +456,16 @@ app.whenReady().then(async () => {
           const loadResult = await LlamaService.initialize();
           if (loadResult.success) {
             mainWindow?.webContents.send("model:ready");
+            aiHealthMarkReady();
+            startAIHealthMonitor();
           } else {
             mainWindow?.webContents.send("model:error", loadResult.error);
+            aiHealthMarkError();
             _showModelErrorDialog(loadResult.error);
           }
         } else {
           mainWindow?.webContents.send("model:download-error", { message: result.error });
+          aiHealthMarkError();
           _showModelErrorDialog(result.error, true);
         }
       }, 2000);
@@ -1125,6 +1177,17 @@ ipcMain.handle("app:is-first-run", () => {
 /** Mark the system requirements screen as seen. */
 ipcMain.handle("app:mark-first-run-seen", () => {
   appSettingsStore.set("systemCheckSeen", true);
+  return true;
+});
+
+/** Has the user completed the new prompt-first onboarding flow? */
+ipcMain.handle("app:has-completed-onboarding", () => {
+  return appSettingsStore.get("hasCompletedFirstRun", false);
+});
+
+/** Mark the new onboarding flow as completed. */
+ipcMain.handle("app:complete-onboarding", () => {
+  appSettingsStore.set("hasCompletedFirstRun", true);
   return true;
 });
 
@@ -2873,4 +2936,114 @@ ipcMain.handle("gdrive:classify-and-organize", async (_e, fileId, fileName, curr
     ...result,
     organized: false,
   };
+});
+
+// ── Prompt-Based Reorganization ──────────────────────────────
+
+ipcMain.handle("prompt-reorg:scan", async (_e, targetDir) => {
+  notifyUserActivity();
+  try {
+    // Use lean scan with caching
+    return await prScanLean(targetDir);
+  } catch (err) {
+    console.error("[main] prompt-reorg:scan failed:", err?.message);
+    return { files: [], totalCount: 0, scannedAt: new Date().toISOString(), targetDirectory: targetDir };
+  }
+});
+
+ipcMain.handle("prompt-reorg:analyze", async (_e, userPrompt, manifest) => {
+  notifyUserActivity();
+  return prAnalyzeWithAI(userPrompt, manifest);
+});
+
+ipcMain.handle("prompt-reorg:preview", async (_e, userPrompt, targetDirectory, manifest, plan) => {
+  notifyUserActivity();
+  // Use lean preview builder if manifest has lean files (index field present)
+  if (manifest?.files?.[0]?.index !== undefined) {
+    return prBuildPreviewLean(userPrompt, targetDirectory, manifest, plan);
+  }
+  return prBuildPreview(userPrompt, targetDirectory, manifest, plan);
+});
+
+ipcMain.handle("prompt-reorg:execute", async (_e, preview) => {
+  notifyUserActivity();
+  const result = await prExecutePreview(preview);
+  // Notify renderer for post-operation toast
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("prompt-reorg:executed", {
+      moved: result.moved,
+      failed: result.failed.length,
+      operationId: result.operationId,
+      undoLogId: result.undoLogId,
+      prompt: preview.prompt,
+    });
+  }
+  return result;
+});
+
+ipcMain.handle("prompt-reorg:get-history", async () => {
+  return prGetHistory();
+});
+
+ipcMain.handle("prompt-reorg:undo", async (_e, operationId) => {
+  notifyUserActivity();
+  return prUndoOperation(operationId);
+});
+
+/** Full pipeline: scan + analyze + reasons + preview in one call with progress events. */
+ipcMain.handle("prompt-reorg:run-pipeline", async (_e, userPrompt, targetDirectory) => {
+  notifyUserActivity();
+  return prRunFullPipeline(userPrompt, targetDirectory);
+});
+
+// ── Undo Log ──────────────────────────────────────────────────
+
+ipcMain.handle("undo-log:get", async () => {
+  return getUndoLog();
+});
+
+ipcMain.handle("undo-log:undo", async (_e, operationId) => {
+  notifyUserActivity();
+  return undoLogUndo(operationId);
+});
+
+ipcMain.handle("undo-log:clear", async () => {
+  return clearUndoLog();
+});
+
+// ── Organization Templates ─────────────────────────────────────
+
+ipcMain.handle("templates:get-all", async (_e, category) => {
+  return getAllTemplates(category);
+});
+
+ipcMain.handle("templates:use", async (_e, templateId) => {
+  await recordTemplateUse(templateId);
+  return { ok: true };
+});
+
+ipcMain.handle("templates:save-custom", async (_e, name, prompt, icon, category) => {
+  return saveCustomTemplate(name, prompt, icon, category);
+});
+
+ipcMain.handle("templates:delete-custom", async (_e, id) => {
+  return deleteCustomTemplate(id);
+});
+
+// ── Scan Cache ─────────────────────────────────────────────────
+
+ipcMain.handle("scan-cache:stats", async () => {
+  return getScanCacheStats();
+});
+
+ipcMain.handle("scan-cache:invalidate", async (_e, folderPath) => {
+  await invalidateScanCache(folderPath);
+  return { ok: true };
+});
+
+// ── AI Health ─────────────────────────────────────────────────
+
+ipcMain.handle("ai:status", () => {
+  return getAIStatus();
 });

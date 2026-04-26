@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld("api", {
     markFirstRunSeen: () => ipcRenderer.invoke("app:mark-first-run-seen"),
     /** Run system checks: RAM, disk, Ollama presence. */
     check: () => ipcRenderer.invoke("app:system-check"),
+    /** True if the user hasn't completed the new prompt-first onboarding. */
+    hasCompletedOnboarding: () => ipcRenderer.invoke("app:has-completed-onboarding"),
+    /** Mark the new onboarding as completed. */
+    completeOnboarding: () => ipcRenderer.invoke("app:complete-onboarding"),
   },
 
   // ── Model download ────────────────────────────────────
@@ -425,6 +429,55 @@ contextBridge.exposeInMainWorld("api", {
     cleanup: () => ipcRenderer.invoke("gdrive:cleanup"),
   },
 
+  // ── Prompt-Based Reorganization ───────────────────────
+  promptReorg: {
+    /** Scan a directory and return a LeanManifest (cached, lean format). */
+    scan: (targetDir) => ipcRenderer.invoke("prompt-reorg:scan", targetDir),
+    /** Send manifest + user prompt to AI. Returns { plan, error? }. */
+    analyze: (userPrompt, manifest) => ipcRenderer.invoke("prompt-reorg:analyze", userPrompt, manifest),
+    /** Build a ReorgPreview (full move list) from a plan. Returns ReorgPreview. */
+    preview: (userPrompt, targetDirectory, manifest, plan) =>
+      ipcRenderer.invoke("prompt-reorg:preview", userPrompt, targetDirectory, manifest, plan),
+    /** Execute approved moves in a preview. Returns { moved, failed, operationId, undoLogId }. */
+    execute: (preview) => ipcRenderer.invoke("prompt-reorg:execute", preview),
+    /** Get reorganization history. Returns { operations: ReorgOperation[] }. */
+    getHistory: () => ipcRenderer.invoke("prompt-reorg:get-history"),
+    /** Undo a past operation by ID. Returns { restored, errors }. */
+    undo: (operationId) => ipcRenderer.invoke("prompt-reorg:undo", operationId),
+    /** Full pipeline: scan + analyze + reasons + preview. Emits prompt-reorg:progress events. */
+    runPipeline: (userPrompt, targetDirectory) =>
+      ipcRenderer.invoke("prompt-reorg:run-pipeline", userPrompt, targetDirectory),
+  },
+
+  // ── Undo Log ──────────────────────────────────────────
+  undoLog: {
+    /** Get all undo operations (last 50). */
+    get: () => ipcRenderer.invoke("undo-log:get"),
+    /** Undo an operation by ID. Returns { restored, skipped, errors }. */
+    undo: (operationId) => ipcRenderer.invoke("undo-log:undo", operationId),
+    /** Clear all undo history. */
+    clear: () => ipcRenderer.invoke("undo-log:clear"),
+  },
+
+  // ── Organization Templates ────────────────────────────
+  templates: {
+    /** Get all templates, optionally filtered by category. Sorted by popularity. */
+    getAll: (category) => ipcRenderer.invoke("templates:get-all", category),
+    /** Increment popularity counter for a template. */
+    use: (templateId) => ipcRenderer.invoke("templates:use", templateId),
+    /** Save a user-created custom template. */
+    saveCustom: (name, prompt, icon, category) =>
+      ipcRenderer.invoke("templates:save-custom", name, prompt, icon, category),
+    /** Delete a custom template. */
+    deleteCustom: (id) => ipcRenderer.invoke("templates:delete-custom", id),
+  },
+
+  // ── AI Health ─────────────────────────────────────────
+  aiHealth: {
+    /** Get current AI engine status. */
+    status: () => ipcRenderer.invoke("ai:status"),
+  },
+
   // ── Events from main process ─────────────────────────
   on: {
     updateAvailable: (callback) =>
@@ -546,6 +599,37 @@ contextBridge.exposeInMainWorld("api", {
     searchUpgradeProgress: (callback) => {
       ipcRenderer.removeAllListeners("search:upgrade-progress");
       ipcRenderer.on("search:upgrade-progress", (_e, data) => callback(data));
+    },
+    /**
+     * Prompt reorg pipeline progress.
+     * Payload: { stage, pct, message, batchCurrent?, batchTotal? }
+     */
+    promptReorgProgress: (callback) => {
+      ipcRenderer.removeAllListeners("prompt-reorg:progress");
+      ipcRenderer.on("prompt-reorg:progress", (_e, data) => callback(data));
+    },
+    /**
+     * Prompt reorg executed — fired after execute completes.
+     * Payload: { moved, failed, operationId, undoLogId, prompt }
+     */
+    promptReorgExecuted: (callback) => {
+      ipcRenderer.removeAllListeners("prompt-reorg:executed");
+      ipcRenderer.on("prompt-reorg:executed", (_e, data) => callback(data));
+    },
+    /** AI engine is attempting a restart after health check failure. */
+    aiRestarting: (callback) => {
+      ipcRenderer.removeAllListeners("ai:restarting");
+      ipcRenderer.on("ai:restarting", () => callback());
+    },
+    /** AI engine recovered after restart. */
+    aiRecovered: (callback) => {
+      ipcRenderer.removeAllListeners("ai:recovered");
+      ipcRenderer.on("ai:recovered", () => callback());
+    },
+    /** AI engine failed after max restart attempts. Payload: { message }. */
+    aiFailed: (callback) => {
+      ipcRenderer.removeAllListeners("ai:failed");
+      ipcRenderer.on("ai:failed", (_e, data) => callback(data));
     },
   },
 });

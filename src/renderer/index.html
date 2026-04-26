@@ -1631,6 +1631,624 @@
       cursor: pointer; transition: border-color 0.15s, color 0.15s;
     }
     .disambig-skip-btn:hover { border-color: rgba(255,255,255,0.35); color: rgba(255,255,255,0.7); }
+
+    /* ── Smart Reorganize ──────────────────────────── */
+    .btn-smart-reorg {
+      background: rgba(167, 139, 250, 0.15);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      color: #c4b5fd;
+      font-weight: 600;
+    }
+    .btn-smart-reorg:hover {
+      background: rgba(167, 139, 250, 0.28);
+      border-color: rgba(167, 139, 250, 0.55);
+    }
+    .pr-panel {
+      width: 600px;
+      max-height: 86vh;
+      overflow-y: auto;
+    }
+    .pr-panel h2 { margin-bottom: 14px; }
+    .pr-textarea {
+      width: 100%;
+      min-height: 72px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--ds-border-h);
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--ds-text);
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    .pr-textarea:focus { border-color: var(--ds-purple); }
+    .pr-dir-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .pr-dir-display {
+      flex: 1;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--ds-border);
+      background: rgba(15, 23, 42, 0.4);
+      color: var(--ds-text-dim);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pr-section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ds-text-dim);
+      margin-bottom: 7px;
+    }
+    .pr-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+    .pr-chip {
+      padding: 4px 11px;
+      border-radius: 99px;
+      border: 1px solid var(--ds-border-h);
+      background: var(--ds-surface);
+      color: var(--ds-text-dim);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .pr-chip:hover {
+      border-color: var(--ds-purple);
+      color: #c4b5fd;
+      background: rgba(167, 139, 250, 0.1);
+    }
+    .pr-loading {
+      text-align: center;
+      padding: 36px 0;
+    }
+    .pr-loading-spinner {
+      width: 28px;
+      height: 28px;
+      border: 2px solid rgba(167, 139, 250, 0.2);
+      border-top-color: var(--ds-purple);
+      border-radius: 50%;
+      animation: prSpin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes prSpin { to { transform: rotate(360deg); } }
+    .pr-loading-text { font-size: 13px; color: var(--ds-text-dim); }
+    /* Preview overlay */
+    .pr-preview-panel {
+      width: 720px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .pr-preview-panel h2 { margin-bottom: 4px; }
+    .pr-preview-subtitle {
+      font-size: 12px;
+      color: var(--ds-text-dim);
+      margin-bottom: 14px;
+      font-style: italic;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pr-summary-bar {
+      padding: 9px 14px;
+      border-radius: 8px;
+      background: rgba(52, 211, 153, 0.07);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      font-size: 13px;
+      margin-bottom: 16px;
+      color: var(--ds-text);
+    }
+    .pr-tree-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .pr-tree-node {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--ds-border);
+      background: var(--ds-surface);
+      min-width: 130px;
+      max-width: 200px;
+    }
+    .pr-tree-folder, .pr-tree-child {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pr-tree-child { padding-left: 16px; margin-top: 3px; }
+    .pr-tree-name { font-size: 12px; font-weight: 600; color: var(--ds-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pr-tree-count { font-size: 10px; color: var(--ds-text-dim); white-space: nowrap; }
+    .pr-file-list {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--ds-border);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .pr-file-row {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--ds-border);
+      transition: background 0.1s;
+    }
+    .pr-file-row:last-child { border-bottom: none; }
+    .pr-file-row:hover { background: rgba(255,255,255,0.025); }
+    .pr-file-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .pr-file-check input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: var(--ds-purple);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .pr-file-info { flex: 1; min-width: 0; }
+    .pr-file-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ds-emerald);
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pr-file-path {
+      font-size: 11px;
+      color: var(--ds-text-dim);
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* History overlay */
+    .pr-history-panel {
+      width: 560px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .pr-history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--ds-border);
+    }
+    .pr-history-item:last-child { border-bottom: none; }
+    .pr-history-main { flex: 1; min-width: 0; }
+    .pr-history-prompt {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ds-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 3px;
+    }
+    .pr-history-meta { font-size: 11px; color: var(--ds-text-dim); }
+
+    /* ── Template cards ──────────────────────────── */
+    .tmpl-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+      scrollbar-width: thin;
+    }
+    .tmpl-scroll::-webkit-scrollbar { height: 4px; }
+    .tmpl-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    .tmpl-card {
+      flex-shrink: 0;
+      width: 110px;
+      padding: 10px 10px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--ds-border);
+      background: var(--ds-surface);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+      text-align: center;
+    }
+    .tmpl-card:hover {
+      border-color: var(--ds-purple);
+      background: rgba(167, 139, 250, 0.1);
+      transform: translateY(-1px);
+    }
+    .tmpl-card-icon { font-size: 1.4rem; display: block; margin-bottom: 5px; }
+    .tmpl-card-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ds-text);
+      line-height: 1.3;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .tmpl-card.custom-tmpl { border-color: rgba(81,242,251,0.2); }
+    .tmpl-custom-badge {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: rgba(81,242,251,0.1);
+      color: var(--ds-cyan);
+      margin-top: 4px;
+    }
+    .tmpl-cat-filters {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .tmpl-cat-btn {
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--ds-border);
+      background: transparent;
+      color: var(--ds-text-dim);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tmpl-cat-btn:hover, .tmpl-cat-btn.active {
+      border-color: var(--ds-purple);
+      color: #c4b5fd;
+      background: rgba(167,139,250,0.1);
+    }
+
+    /* ── Deep scan toggle ────────────────────────── */
+    .pr-deep-scan-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--ds-text-dim);
+    }
+    .pr-deep-scan-row input { accent-color: var(--ds-purple); cursor: pointer; }
+
+    /* ── File reason & confidence ────────────────── */
+    .pr-file-reason {
+      font-size: 10px;
+      color: var(--ds-text-dim);
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pr-file-row.low-conf { background: rgba(251,191,36,0.04); }
+    .pr-file-row.low-conf .pr-file-name { color: var(--ds-amber); }
+    .pr-file-row.low-conf .pr-file-check input[type="checkbox"] {
+      accent-color: var(--ds-amber);
+    }
+    .pr-conf-badge {
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-weight: 700;
+      flex-shrink: 0;
+      align-self: center;
+    }
+    .pr-conf-badge.high { background: rgba(52,211,153,0.12); color: var(--ds-emerald); }
+    .pr-conf-badge.low  { background: rgba(251,191,36,0.12);  color: var(--ds-amber); }
+
+    /* ── Batch progress steps ────────────────────── */
+    .pr-batch-steps {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+    }
+    .pr-batch-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--ds-text-dim);
+    }
+    .pr-batch-step.done { color: var(--ds-emerald); }
+    .pr-batch-step.active { color: var(--ds-text); }
+    .pr-batch-step-icon { width: 14px; text-align: center; flex-shrink: 0; }
+    .pr-progress-bar-wrap {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0 6px;
+    }
+    .pr-progress-bar {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--ds-purple), var(--ds-cyan));
+      transition: width 0.4s ease;
+    }
+
+    /* ── Post-operation notification bar ─────────── */
+    .post-op-bar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(52,211,153,0.25);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--ds-text);
+      z-index: 210;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      animation: slideUpIn 0.3s ease-out;
+      max-width: 560px;
+      white-space: nowrap;
+    }
+    @keyframes slideUpIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .post-op-bar.hidden { display: none; }
+    .post-op-bar-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .post-op-bar-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--ds-border-h);
+      background: rgba(255,255,255,0.05);
+      color: var(--ds-text-dim);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .post-op-bar-btn:hover { color: #fff; border-color: var(--ds-border-h); background: rgba(255,255,255,0.1); }
+    .post-op-bar-btn.undo { color: var(--ds-amber); border-color: rgba(251,191,36,0.3); }
+    .post-op-bar-btn.undo:hover { background: rgba(251,191,36,0.1); }
+
+    /* ── Undo Log overlay ───────────────────────── */
+    .undo-log-panel {
+      width: 580px;
+      max-height: 82vh;
+      overflow-y: auto;
+    }
+    .undo-log-group-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.8px;
+      margin: 14px 0 6px;
+    }
+    .undo-log-item {
+      background: rgba(15,23,42,0.4);
+      border: 1px solid var(--ds-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .undo-log-item-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .undo-log-item-info { flex: 1; min-width: 0; }
+    .undo-log-item-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ds-text);
+      margin-bottom: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .undo-log-item-meta { font-size: 11px; color: var(--ds-text-dim); }
+    .undo-log-item-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+    .undo-log-detail-list {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--ds-border);
+      font-size: 11px;
+      color: var(--ds-text-dim);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .undo-log-detail-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .undo-log-detail-row:last-child { border-bottom: none; }
+    .undo-log-detail-name { flex: 0 0 auto; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text); }
+    .undo-log-detail-arrow { color: rgba(255,255,255,0.25); flex-shrink: 0; }
+    .undo-log-detail-dest { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .undo-log-item.undone { opacity: 0.45; }
+    .undo-log-undone-badge {
+      font-size: 10px;
+      color: var(--ds-emerald);
+      font-weight: 600;
+    }
+
+    /* ── First-Run Onboarding Overlay (prompt-first) ─ */
+    .firstrun-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2,6,23,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .firstrun-card {
+      background: var(--ds-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--ds-border);
+      border-radius: 20px;
+      padding: 32px 32px 28px;
+      width: 520px;
+      max-width: 96vw;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+      animation: fadeInUp 0.35s ease-out;
+    }
+    .firstrun-step { display: none; }
+    .firstrun-step.active { display: block; }
+    .firstrun-icon { font-size: 2.8rem; text-align: center; margin-bottom: 14px; }
+    .firstrun-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .firstrun-subtitle {
+      font-size: 13px;
+      color: var(--ds-text-dim);
+      text-align: center;
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+    .firstrun-privacy {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.28);
+      margin-top: 14px;
+    }
+    .firstrun-privacy span { color: var(--ds-cyan); }
+    .firstrun-folder-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .firstrun-folder-display {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--ds-border);
+      background: rgba(15,23,42,0.5);
+      color: var(--ds-text-dim);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .firstrun-folder-display.selected { color: var(--ds-cyan); border-color: rgba(81,242,251,0.3); }
+    .firstrun-file-count {
+      text-align: center;
+      font-size: 12px;
+      color: var(--ds-text-dim);
+      margin-bottom: 16px;
+    }
+    .firstrun-prompt-area {
+      width: 100%;
+      min-height: 80px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--ds-border-h);
+      background: rgba(15,23,42,0.6);
+      color: var(--ds-text);
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .firstrun-prompt-area:focus { border-color: var(--ds-purple); }
+    .firstrun-tmpl-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .firstrun-tmpl-chip {
+      padding: 5px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--ds-border-h);
+      background: var(--ds-surface);
+      color: var(--ds-text-dim);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .firstrun-tmpl-chip:hover {
+      border-color: var(--ds-purple);
+      color: #c4b5fd;
+      background: rgba(167,139,250,0.1);
+    }
+    .firstrun-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .firstrun-skip { font-size: 11px; color: rgba(255,255,255,0.3); cursor: pointer; }
+    .firstrun-skip:hover { color: rgba(255,255,255,0.6); }
+
+    /* ── Success screen ──────────────────────────── */
+    .firstrun-success-stats {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin: 18px 0;
+    }
+    .firstrun-stat {
+      text-align: center;
+    }
+    .firstrun-stat-num {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--ds-emerald);
+    }
+    .firstrun-stat-label {
+      font-size: 11px;
+      color: var(--ds-text-dim);
+      margin-top: 2px;
+    }
+    .firstrun-success-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .firstrun-success-actions .btn { width: 100%; text-align: center; }
+    .firstrun-setup-hint {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 12px;
+    }
   </style>
 </head>
 <body>
@@ -1669,6 +2287,8 @@
         style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;font-weight:600;"
         aria-label="Open Google Drive browser">📁 Drive</button>
       <button class="btn btn-chat btn-sm" id="chatBtn" title="Ask AI about your files" aria-label="Open AI chat assistant">💬 Ask AI</button>
+      <button class="btn btn-smart-reorg btn-sm" id="smartReorgBtn" title="Reorganize files using a plain-English prompt" aria-label="Open Smart Reorganize">✨ Smart Organize</button>
+      <button class="btn btn-ghost btn-sm" id="undoLogNavBtn" title="View organization history and undo operations" aria-label="Open Undo Log" style="font-size:14px;padding:5px 10px;">🕐</button>
       <div class="status" role="status" aria-live="polite">
         <span class="status-dot" id="statusDot" aria-hidden="true"></span>
         <span id="statusText">Starting...</span>
@@ -2211,6 +2831,240 @@
         <button class="disambig-confirm-btn" id="disambigConfirmBtn" disabled>Confirm →</button>
       </div>
     </div>
+  </div>
+
+  <!-- Smart Reorganize: Prompt Input Overlay -->
+  <div class="settings-overlay hidden" id="promptReorgOverlay" role="dialog" aria-modal="true" aria-label="Smart Reorganize">
+    <div class="settings-panel pr-panel">
+      <h2>✨ Smart Reorganize</h2>
+
+      <!-- Input state (shown by default) -->
+      <div id="prInputState">
+
+        <!-- Templates section -->
+        <div class="pr-section-label" style="margin-bottom:8px;">Templates — click to use</div>
+        <div class="tmpl-cat-filters" id="tmplCatFilters">
+          <button class="tmpl-cat-btn active" data-cat="">All</button>
+          <button class="tmpl-cat-btn" data-cat="general">General</button>
+          <button class="tmpl-cat-btn" data-cat="professional">Professional</button>
+          <button class="tmpl-cat-btn" data-cat="creative">Creative</button>
+          <button class="tmpl-cat-btn" data-cat="development">Development</button>
+        </div>
+        <div class="tmpl-scroll" id="tmplScrollRow">
+          <!-- Template cards injected by JS -->
+        </div>
+
+        <div class="pr-section-label" style="margin-bottom:6px;">Or write your own:</div>
+        <textarea id="prPromptArea" class="pr-textarea"
+          placeholder="Describe how you want your files organized..."
+          rows="3"></textarea>
+
+        <div class="pr-dir-row">
+          <span class="pr-dir-display" id="prDirDisplay">No folder selected</span>
+          <button class="btn btn-ghost btn-sm" id="prDirPickerBtn">Browse...</button>
+        </div>
+
+        <div class="pr-deep-scan-row">
+          <input type="checkbox" id="prDeepScan">
+          <label for="prDeepScan">Deep Scan — read file contents for more accurate sorting (slower)</label>
+        </div>
+
+        <div class="s-actions">
+          <button class="btn btn-ghost btn-sm" id="prCloseBtn">Cancel</button>
+          <button class="btn btn-ghost btn-sm" id="prHistoryBtn">🕐 History</button>
+          <button class="btn btn-ghost btn-sm" id="prUndoLogBtn">↩ Undo Log</button>
+          <button class="btn btn-primary btn-sm" id="prAnalyzeBtn" disabled>Analyze →</button>
+        </div>
+      </div>
+
+      <!-- Loading state (hidden by default) -->
+      <div id="prLoadingState" class="pr-loading hidden">
+        <div class="pr-loading-spinner"></div>
+        <div class="pr-loading-text" id="prLoadingText">Scanning files...</div>
+        <div class="pr-progress-bar-wrap">
+          <div class="pr-progress-bar" id="prProgressBar" style="width:0%"></div>
+        </div>
+        <div class="pr-batch-steps" id="prBatchSteps">
+          <div class="pr-batch-step" id="prstep-scanning"><span class="pr-batch-step-icon">⬜</span> Scanning files...</div>
+          <div class="pr-batch-step" id="prstep-analyzing"><span class="pr-batch-step-icon">⬜</span> AI analyzing structure...</div>
+          <div class="pr-batch-step" id="prstep-reasons"><span class="pr-batch-step-icon">⬜</span> Generating explanations...</div>
+          <div class="pr-batch-step" id="prstep-preview"><span class="pr-batch-step-icon">⬜</span> Building preview...</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="prCancelPipeline" style="margin-top:12px;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Reorganize: Preview Overlay -->
+  <div class="settings-overlay hidden" id="reorgPreviewOverlay" role="dialog" aria-modal="true" aria-label="Reorganization Preview">
+    <div class="settings-panel pr-preview-panel">
+      <h2>Reorganization Preview</h2>
+      <p class="pr-preview-subtitle" id="prPreviewSubtitle">"..."</p>
+
+      <div class="pr-summary-bar" id="prPreviewSummary">Calculating...</div>
+
+      <div class="pr-section-label">Proposed folder structure</div>
+      <div class="pr-tree-wrap" id="prTreeContainer"></div>
+
+      <div class="pr-section-label">
+        Files to move
+        <span style="font-size:10px;color:var(--ds-text-dim);text-transform:none;letter-spacing:0;">(uncheck to skip · 💡 = why this folder · 🟡 = low confidence, review manually)</span>
+      </div>
+      <div class="pr-file-list" id="prFileList"></div>
+
+      <div id="prSaveTmplRow" style="margin-bottom:10px;display:none;">
+        <span style="font-size:12px;color:var(--ds-text-dim);">💡 Save this prompt as a template?</span>
+        <button class="btn btn-ghost btn-sm" id="prSaveTmplBtn" style="margin-left:8px;">Save Template</button>
+      </div>
+
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="prPreviewCancel">Cancel</button>
+        <button class="btn btn-success btn-sm" id="prApproveBtn">Approve &amp; Organize</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Reorganize: History Overlay -->
+  <div class="settings-overlay hidden" id="reorgHistoryOverlay" role="dialog" aria-modal="true" aria-label="Reorganization History">
+    <div class="settings-panel pr-history-panel">
+      <h2>📋 Reorganization History</h2>
+      <p style="font-size:12px;color:var(--ds-text-dim);margin-bottom:14px;">Past Smart Organize operations. Undo moves files back to their original locations.</p>
+      <div id="prHistoryList"></div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-success btn-sm" id="prHistoryClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Undo Log Overlay -->
+  <div class="settings-overlay hidden" id="undoLogOverlay" role="dialog" aria-modal="true" aria-label="Organization History">
+    <div class="settings-panel undo-log-panel">
+      <h2>🕐 Organization History</h2>
+      <p style="font-size:12px;color:var(--ds-text-dim);margin-bottom:14px;">All organize operations. Undo moves files back to their original locations.</p>
+      <div id="undoLogList">
+        <div style="text-align:center;color:var(--ds-text-dim);font-size:13px;padding:32px 0;">No history yet.</div>
+      </div>
+      <div class="s-actions" style="margin-top:16px;">
+        <button class="btn btn-ghost btn-sm" id="undoLogClearBtn">Clear History</button>
+        <button class="btn btn-success btn-sm" id="undoLogCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Template Modal -->
+  <div class="settings-overlay hidden" id="saveTmplOverlay" role="dialog" aria-modal="true" aria-label="Save Template">
+    <div class="settings-panel" style="width:380px;">
+      <h2>💾 Save as Template</h2>
+      <p style="font-size:12px;color:var(--ds-text-dim);margin-bottom:14px;">Save this prompt for quick reuse later.</p>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px;color:var(--ds-text-dim);display:block;margin-bottom:5px;">Template name</label>
+        <input id="saveTmplName" type="text" placeholder="My Template"
+          style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--ds-border);background:rgba(15,23,42,0.5);color:var(--ds-text);font-size:13px;outline:none;">
+      </div>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px;color:var(--ds-text-dim);display:block;margin-bottom:5px;">Icon (emoji)</label>
+        <input id="saveTmplIcon" type="text" placeholder="📁" maxlength="2"
+          style="width:80px;padding:8px 10px;border-radius:7px;border:1px solid var(--ds-border);background:rgba(15,23,42,0.5);color:var(--ds-text);font-size:16px;outline:none;text-align:center;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;color:var(--ds-text-dim);display:block;margin-bottom:5px;">Category</label>
+        <select id="saveTmplCategory"
+          style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--ds-border);background:rgba(15,23,42,0.7);color:var(--ds-text);font-size:12px;outline:none;">
+          <option value="general">General</option>
+          <option value="professional">Professional</option>
+          <option value="creative">Creative</option>
+          <option value="development">Development</option>
+        </select>
+      </div>
+      <div class="s-actions">
+        <button class="btn btn-ghost btn-sm" id="saveTmplCancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="saveTmplConfirmBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-Run Onboarding Overlay (prompt-first) -->
+  <div class="firstrun-overlay hidden" id="firstRunOverlay" role="dialog" aria-modal="true" aria-label="Welcome to System Janitor">
+    <div class="firstrun-card">
+
+      <!-- Step 1: Welcome + Choose Folder -->
+      <div class="firstrun-step active" id="frStep1">
+        <div class="firstrun-icon">🧹</div>
+        <div class="firstrun-title">Let's organize your first folder</div>
+        <div class="firstrun-subtitle">Pick any messy folder. Tell us how you want it organized. Watch it happen.</div>
+        <div class="firstrun-folder-row">
+          <span class="firstrun-folder-display" id="frFolderDisplay">No folder selected</span>
+          <button class="btn btn-primary btn-sm" id="frChooseFolderBtn" style="font-size:13px;padding:9px 20px;">Choose Folder</button>
+        </div>
+        <div class="firstrun-privacy">🔒 <span>100% local.</span> Your files never leave your computer.</div>
+        <div class="firstrun-actions">
+          <span class="firstrun-skip" id="frSkipBtn">Skip setup →</span>
+          <button class="btn btn-organize btn-sm" id="frNextToStep2Btn" disabled style="font-size:13px;padding:9px 24px;">Continue →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Prompt + Templates -->
+      <div class="firstrun-step" id="frStep2">
+        <div class="firstrun-title">How do you want these organized?</div>
+        <div class="firstrun-file-count" id="frFileCount">Select a folder first</div>
+        <div class="firstrun-tmpl-chips" id="frTmplChips">
+          <span class="firstrun-tmpl-chip" data-prompt="Organize into folders by file type: Documents (doc, docx, pdf, txt), Images (jpg, png, gif, svg, webp), Videos (mp4, mov, avi, mkv), Audio (mp3, wav, flac, aac), Spreadsheets (xlsx, csv, xls), Archives (zip, rar, 7z, tar), and Other for everything else.">📁 Organize by file type</span>
+          <span class="firstrun-tmpl-chip" data-prompt="Organize by the year and month each file was last modified. Structure: Year folder → Month folder. Put files from the current month in a 'Recent' folder.">📅 Sort by date</span>
+          <span class="firstrun-tmpl-chip" data-prompt="Create two main folders: Documents (pdf, doc, docx, txt, md, xlsx, csv, pptx) and Media (jpg, png, gif, mp4, mov, mp3, wav, psd, svg). Put anything else in Miscellaneous.">📄 Docs vs Media</span>
+          <span class="firstrun-tmpl-chip" data-prompt="Sort files into Work and Personal folders based on filenames. Work: invoice, report, meeting, project, client, proposal, contract. Personal: vacation, photo, recipe, family, hobby. Unclear → Review folder.">🗂️ Work vs Personal</span>
+          <span class="firstrun-tmpl-chip" data-prompt="Move documents to Documents, images to Images, installers/DMGs/EXEs to Installers, archives (zip/rar) to Archives, and anything older than 90 days to Old Downloads. Leave recent files in place.">🧹 Clean Downloads</span>
+          <span class="firstrun-tmpl-chip" data-prompt="Move old files (6+ months) to Archive, keep recent organized by type.">📦 Archive old files</span>
+        </div>
+        <textarea id="frPromptArea" class="firstrun-prompt-area"
+          placeholder="e.g. Sort by file type — documents, images, videos, code"></textarea>
+        <div class="firstrun-actions">
+          <button class="btn btn-ghost btn-sm" id="frBackBtn">← Back</button>
+          <button class="btn btn-organize btn-sm" id="frAnalyzeBtn" disabled style="font-size:13px;padding:9px 28px;">Analyze →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Preview inside onboarding (reuses full preview overlay, so just a loading/message state here) -->
+      <div class="firstrun-step" id="frStep3">
+        <div class="firstrun-icon">⏳</div>
+        <div class="firstrun-title">Analyzing your files...</div>
+        <div class="firstrun-subtitle" id="frAnalyzingMsg">Scanning and building your organization plan.</div>
+        <div class="pr-progress-bar-wrap" style="margin:16px 0;">
+          <div class="pr-progress-bar" id="frProgressBar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: Success -->
+      <div class="firstrun-step" id="frStep4">
+        <div class="firstrun-icon">✅</div>
+        <div class="firstrun-title">Done!</div>
+        <div class="firstrun-subtitle">Your files have been organized.</div>
+        <div class="firstrun-success-stats">
+          <div class="firstrun-stat">
+            <div class="firstrun-stat-num" id="frStatFiles">0</div>
+            <div class="firstrun-stat-label">Files organized</div>
+          </div>
+          <div class="firstrun-stat">
+            <div class="firstrun-stat-num" id="frStatFolders">0</div>
+            <div class="firstrun-stat-label">Folders created</div>
+          </div>
+        </div>
+        <div class="firstrun-success-actions">
+          <button class="btn btn-success" id="frViewResultsBtn">📂 View Results</button>
+          <button class="btn btn-organize" id="frOrganizeAnotherBtn">↩ Organize Another Folder</button>
+          <button class="btn btn-ghost" id="frSetupAutoBtn">⚙️ Set Up Auto-Sorting</button>
+        </div>
+        <div class="firstrun-setup-hint">Want continuous auto-sorting? Set up folder categories →</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Post-Operation Notification Bar -->
+  <div class="post-op-bar hidden" id="postOpBar" role="status" aria-live="polite">
+    <span class="post-op-bar-msg" id="postOpMsg">✅ Files organized.</span>
+    <button class="post-op-bar-btn undo" id="postOpUndoBtn">↩ Undo</button>
+    <button class="post-op-bar-btn" id="postOpViewBtn">View Details</button>
+    <button class="post-op-bar-btn" id="postOpDismissBtn">✕</button>
   </div>
 
   <script src="renderer.js"></script>

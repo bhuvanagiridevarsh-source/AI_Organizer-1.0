@@ -36,6 +36,7 @@ asarUnpack:
   - "**/node_modules/@node-llama-cpp/**/*"
   - "**/node_modules/esbuild/**/*"
   - "**/node_modules/@esbuild/**/*"
+  # macOS-only natives — electron-builder skips missing ones automatically
   - "**/node_modules/iconv-corefoundation/**/*"
   - "**/node_modules/fsevents/**/*"
 

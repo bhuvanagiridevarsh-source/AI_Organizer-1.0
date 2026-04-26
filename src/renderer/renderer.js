@@ -4215,3 +4215,1407 @@ async function openLanConfigModal() {
     }
   });
 })();
+
+// ── Smart Reorganize (legacy — superseded by initEnhancedSmartReorg below) ───
+
+(function initSmartReorg() {
+  // Disabled: replaced by initEnhancedSmartReorg which has templates, reasons,
+  // confidence coloring, batch progress, pipeline mode, and undo log integration.
+  return;
+  const smartReorgBtn      = $("smartReorgBtn");
+  const promptReorgOverlay = $("promptReorgOverlay");
+  const prInputState       = $("prInputState");
+  const prLoadingState     = $("prLoadingState");
+  const prLoadingText      = $("prLoadingText");
+  const prCloseBtn         = $("prCloseBtn");
+  const prPromptArea       = $("prPromptArea");
+  const prDirDisplay       = $("prDirDisplay");
+  const prDirPickerBtn     = $("prDirPickerBtn");
+  const prAnalyzeBtn       = $("prAnalyzeBtn");
+  const prHistoryBtn       = $("prHistoryBtn");
+
+  const reorgPreviewOverlay = $("reorgPreviewOverlay");
+  const prPreviewSubtitle   = $("prPreviewSubtitle");
+  const prPreviewSummary    = $("prPreviewSummary");
+  const prTreeContainer     = $("prTreeContainer");
+  const prFileList          = $("prFileList");
+  const prApproveBtn        = $("prApproveBtn");
+  const prPreviewCancel     = $("prPreviewCancel");
+
+  const reorgHistoryOverlay = $("reorgHistoryOverlay");
+  const prHistoryList       = $("prHistoryList");
+  const prHistoryClose      = $("prHistoryClose");
+
+  let prTargetDir     = null;
+  let prCurrentPreview = null;
+
+  // ── Helpers ──
+
+  function prShowInput() {
+    prInputState.classList.remove("hidden");
+    prLoadingState.classList.add("hidden");
+  }
+
+  function prShowLoading(msg) {
+    prInputState.classList.add("hidden");
+    prLoadingState.classList.remove("hidden");
+    prLoadingText.textContent = msg;
+  }
+
+  function prRelativeDest(to, base) {
+    const sep = to.includes("/") ? "/" : "\\";
+    let rel = to;
+    if (rel.startsWith(base)) rel = rel.slice(base.length);
+    rel = rel.replace(/^[/\\]/, "");
+    const parts = rel.split(/[/\\]/);
+    // Remove last segment (filename), return folder path
+    return parts.slice(0, -1).join(" / ") || "(root)";
+  }
+
+  // ── Open / close prompt overlay ──
+
+  smartReorgBtn.addEventListener("click", () => {
+    prShowInput();
+    promptReorgOverlay.classList.remove("hidden");
+    prPromptArea.focus();
+  });
+
+  function closePromptOverlay() {
+    promptReorgOverlay.classList.add("hidden");
+    prShowInput();
+  }
+
+  prCloseBtn.addEventListener("click", closePromptOverlay);
+  promptReorgOverlay.addEventListener("click", (e) => {
+    if (e.target === promptReorgOverlay) closePromptOverlay();
+  });
+
+  // ── Directory picker ──
+
+  prDirPickerBtn.addEventListener("click", async () => {
+    try {
+      const dir = await window.api.dialog.openFolder();
+      if (dir) {
+        prTargetDir = dir;
+        prDirDisplay.textContent = dir;
+        prDirDisplay.title = dir;
+      }
+    } catch (e) {
+      showToast("Could not open folder picker: " + (e.message || e), 3000);
+    }
+  });
+
+  // ── Example chips ──
+
+  document.querySelectorAll(".pr-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      prPromptArea.value = chip.dataset.prompt;
+      prPromptArea.focus();
+    });
+  });
+
+  // ── Analyze ──
+
+  prAnalyzeBtn.addEventListener("click", async () => {
+    const promptText = prPromptArea.value.trim();
+    if (!promptText) {
+      showToast("Please describe how you want your files organized.", 3000);
+      prPromptArea.focus();
+      return;
+    }
+    if (!prTargetDir) {
+      showToast("Please select a folder to reorganize.", 3000);
+      return;
+    }
+
+    prShowLoading("Scanning files...");
+
+    try {
+      // Step 1: Scan
+      const manifest = await window.api.promptReorg.scan(prTargetDir);
+      if (!manifest || manifest.totalCount === 0) {
+        showToast("No files found in this folder. Pick a different one.", 4000);
+        prShowInput();
+        return;
+      }
+
+      prLoadingText.textContent = `Analyzing ${manifest.totalCount} file${manifest.totalCount === 1 ? "" : "s"} with AI...`;
+
+      // Step 2: AI analysis
+      const { plan, error } = await window.api.promptReorg.analyze(promptText, manifest);
+      if (error || !plan) {
+        showToast((error || "AI analysis failed. Try rephrasing your prompt."), 5000);
+        prShowInput();
+        return;
+      }
+
+      const assignedCount = (plan.assignments || []).length;
+      if (assignedCount === 0) {
+        showToast("The AI couldn't figure out how to organize these files. Try being more specific.", 5000);
+        prShowInput();
+        return;
+      }
+
+      // Step 3: Build preview
+      const preview = await window.api.promptReorg.preview(promptText, prTargetDir, manifest, plan);
+      prCurrentPreview = preview;
+
+      closePromptOverlay();
+      renderPreview(preview);
+      reorgPreviewOverlay.classList.remove("hidden");
+    } catch (err) {
+      showToast("Smart Organize error: " + (err.message || err), 5000);
+      prShowInput();
+    }
+  });
+
+  // ── Render preview ──
+
+  function renderPreview(preview) {
+    const approvedMoves = preview.moves.filter((m) => m.approved);
+    const folderCount = preview.proposedStructure.length;
+
+    prPreviewSubtitle.textContent = `"${preview.prompt}"`;
+
+    prPreviewSummary.innerHTML =
+      `<strong>${approvedMoves.length}</strong> file${approvedMoves.length === 1 ? "" : "s"} ` +
+      `will be moved into <strong>${folderCount}</strong> folder${folderCount === 1 ? "" : "s"}` +
+      (preview.unmoved.length > 0
+        ? ` &nbsp;•&nbsp; <span style="color:var(--ds-text-dim)">${preview.unmoved.length} unassigned</span>`
+        : "");
+
+    // Folder tree
+    prTreeContainer.innerHTML = preview.proposedStructure.map((node) => {
+      const childRows = node.children.map((c) =>
+        `<div class="pr-tree-child">
+           <span class="pr-tree-icon" style="font-size:11px;">📂</span>
+           <span class="pr-tree-name">${esc(c.name)}</span>
+           <span class="pr-tree-count">${c.fileCount}</span>
+         </div>`
+      ).join("");
+      return `<div class="pr-tree-node">
+        <div class="pr-tree-folder">
+          <span class="pr-tree-icon">📁</span>
+          <span class="pr-tree-name">${esc(node.name)}</span>
+          <span class="pr-tree-count">${node.fileCount} file${node.fileCount === 1 ? "" : "s"}</span>
+        </div>
+        ${childRows}
+      </div>`;
+    }).join("");
+
+    // File list
+    prFileList.innerHTML = preview.moves.map((move, idx) =>
+      `<div class="pr-file-row">
+         <label class="pr-file-check">
+           <input type="checkbox" class="pr-move-check" data-idx="${idx}" ${move.approved ? "checked" : ""}>
+           <div class="pr-file-info">
+             <span class="pr-file-name">${esc(move.file.fileName)}</span>
+             <span class="pr-file-path">${esc(move.file.parentFolder)} → ${esc(prRelativeDest(move.to, preview.targetDirectory))}</span>
+           </div>
+         </label>
+       </div>`
+    ).join("");
+
+    // Wire checkboxes → toggle approved flag
+    prFileList.querySelectorAll(".pr-move-check").forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        prCurrentPreview.moves[idx].approved = e.target.checked;
+        // Refresh summary count
+        const nowApproved = prCurrentPreview.moves.filter((m) => m.approved).length;
+        prPreviewSummary.querySelector("strong").textContent = nowApproved;
+      });
+    });
+
+    prApproveBtn.textContent =
+      approvedMoves.length > 50
+        ? `Approve & Organize (${approvedMoves.length} files)`
+        : "Approve & Organize";
+    prApproveBtn.disabled = false;
+  }
+
+  // ── Close preview ──
+
+  function closePreviewOverlay() {
+    reorgPreviewOverlay.classList.add("hidden");
+    prCurrentPreview = null;
+  }
+
+  reorgPreviewOverlay.addEventListener("click", (e) => {
+    if (e.target === reorgPreviewOverlay) closePreviewOverlay();
+  });
+  prPreviewCancel.addEventListener("click", closePreviewOverlay);
+
+  // ── Approve & Organize ──
+
+  prApproveBtn.addEventListener("click", async () => {
+    if (!prCurrentPreview) return;
+
+    const approvedCount = prCurrentPreview.moves.filter((m) => m.approved).length;
+    if (approvedCount === 0) {
+      showToast("No files selected to move. Check at least one file.", 3000);
+      return;
+    }
+
+    prApproveBtn.disabled = true;
+    prApproveBtn.textContent = "Organizing...";
+
+    try {
+      const result = await window.api.promptReorg.execute(prCurrentPreview);
+
+      closePreviewOverlay();
+
+      let msg = `✅ Moved ${result.moved} file${result.moved === 1 ? "" : "s"}`;
+      if (result.failed.length > 0) msg += ` (${result.failed.length} failed — see logs)`;
+      showToast(msg, 5000);
+      feedAdd(msg);
+
+      // Refresh known folders in case new ones were created
+      if (DEST_DIR) {
+        try {
+          const folders = await window.api.folders.scan(DEST_DIR);
+          knownFolders = folders;
+        } catch (_) {}
+      }
+    } catch (err) {
+      showToast("Organize failed: " + (err.message || err), 5000);
+      prApproveBtn.disabled = false;
+      prApproveBtn.textContent = "Approve & Organize";
+    }
+  });
+
+  // ── History ──
+
+  prHistoryBtn.addEventListener("click", async () => {
+    closePromptOverlay();
+    await renderHistory();
+    reorgHistoryOverlay.classList.remove("hidden");
+  });
+
+  function closeHistoryOverlay() {
+    reorgHistoryOverlay.classList.add("hidden");
+  }
+
+  prHistoryClose.addEventListener("click", closeHistoryOverlay);
+  reorgHistoryOverlay.addEventListener("click", (e) => {
+    if (e.target === reorgHistoryOverlay) closeHistoryOverlay();
+  });
+
+  async function renderHistory() {
+    prHistoryList.innerHTML =
+      '<div style="color:var(--ds-text-dim);font-size:13px;text-align:center;padding:20px;">Loading...</div>';
+
+    try {
+      const history = await window.api.promptReorg.getHistory();
+      if (!history || history.operations.length === 0) {
+        prHistoryList.innerHTML =
+          '<div style="color:var(--ds-text-dim);font-size:13px;text-align:center;padding:24px;">No reorganization history yet.<br>Use Smart Organize to get started.</div>';
+        return;
+      }
+
+      prHistoryList.innerHTML = history.operations.map((op) => {
+        const date = new Date(op.timestamp).toLocaleString();
+        return `
+          <div class="pr-history-item">
+            <div class="pr-history-main">
+              <div class="pr-history-prompt">"${esc(op.prompt)}"</div>
+              <div class="pr-history-meta">${esc(date)} &nbsp;•&nbsp; ${op.fileCount} file${op.fileCount === 1 ? "" : "s"} moved</div>
+            </div>
+            <button class="btn btn-sm ${op.canUndo ? "btn-ghost" : ""} pr-undo-btn"
+              data-id="${esc(op.id)}"
+              ${op.canUndo ? "" : "disabled"}
+              style="${op.canUndo ? "" : "opacity:0.38;cursor:default;"}">
+              ${op.canUndo ? "↩ Undo" : "Undone"}
+            </button>
+          </div>`;
+      }).join("");
+
+      // Wire undo buttons
+      prHistoryList.querySelectorAll(".pr-undo-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const opId = btn.dataset.id;
+          btn.disabled = true;
+          btn.textContent = "Undoing...";
+          try {
+            const result = await window.api.promptReorg.undo(opId);
+            const msgs = [];
+            if (result.restored > 0) msgs.push(`↩ Restored ${result.restored} file${result.restored === 1 ? "" : "s"}`);
+            if (result.errors.length > 0) msgs.push(`${result.errors.length} couldn't be restored`);
+            showToast(msgs.join(" — ") || "Nothing restored.", 5000);
+            if (result.restored > 0) feedAdd(`↩ Undid reorganization: restored ${result.restored} file${result.restored === 1 ? "" : "s"}`);
+            await renderHistory(); // refresh list
+          } catch (e) {
+            showToast("Undo failed: " + (e.message || e), 4000);
+            await renderHistory();
+          }
+        });
+      });
+    } catch (err) {
+      prHistoryList.innerHTML =
+        `<div style="color:var(--ds-red);font-size:13px;text-align:center;padding:20px;">Failed to load history: ${esc(err.message || String(err))}</div>`;
+    }
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  TEMPLATES MODULE
+// ═══════════════════════════════════════════════════════════════
+
+(function templatesModule() {
+  let _allTemplates = [];
+  let _activeCategory = '';
+
+  async function loadTemplates(category) {
+    try {
+      _allTemplates = await window.api.templates.getAll(category || undefined);
+    } catch {
+      _allTemplates = [];
+    }
+  }
+
+  function renderTemplateCards(container, onSelect) {
+    if (!container) return;
+    if (_allTemplates.length === 0) {
+      container.innerHTML = '<span style="font-size:11px;color:var(--ds-text-dim);padding:4px 0;">No templates found.</span>';
+      return;
+    }
+    container.innerHTML = _allTemplates.map((t) => `
+      <div class="tmpl-card${t.isCustom ? ' custom-tmpl' : ''}" data-id="${esc(t.id)}" data-prompt="${esc(t.prompt)}" title="${esc(t.description)}">
+        <span class="tmpl-card-icon">${t.icon}</span>
+        <span class="tmpl-card-name">${esc(t.name)}</span>
+        ${t.isCustom ? '<span class="tmpl-custom-badge">Custom</span>' : ''}
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.tmpl-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const prompt = card.dataset.prompt;
+        const id = card.dataset.id;
+        if (onSelect) onSelect(prompt, id);
+        // Track usage
+        window.api.templates.use(id).catch(() => {});
+        // Reload to update popularity sort
+        setTimeout(() => refreshTemplates(container, onSelect), 500);
+      });
+    });
+  }
+
+  async function refreshTemplates(container, onSelect) {
+    await loadTemplates(_activeCategory);
+    renderTemplateCards(container, onSelect);
+  }
+
+  // ── Category filter wire-up ──────────────────────
+  function wireCategoryFilters(filtersEl, container, onSelect) {
+    if (!filtersEl) return;
+    filtersEl.querySelectorAll('.tmpl-cat-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        filtersEl.querySelectorAll('.tmpl-cat-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        _activeCategory = btn.dataset.cat || '';
+        await loadTemplates(_activeCategory);
+        renderTemplateCards(container, onSelect);
+      });
+    });
+  }
+
+  // ── Public init ──────────────────────────────────
+  window._templatesModule = {
+    init: async function(container, filtersEl, onSelect) {
+      await loadTemplates('');
+      renderTemplateCards(container, onSelect);
+      wireCategoryFilters(filtersEl, container, onSelect);
+    },
+    refresh: async function(container, onSelect) {
+      await loadTemplates(_activeCategory);
+      renderTemplateCards(container, onSelect);
+    },
+  };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  ENHANCED SMART REORG (replaces the existing initSmartReorg)
+//  Adds: templates, progress steps, reasons, confidence coloring,
+//        deep scan toggle, save-as-template, pipeline mode
+// ═══════════════════════════════════════════════════════════════
+
+(function initEnhancedSmartReorg() {
+  const smartReorgBtn       = $('smartReorgBtn');
+  const promptReorgOverlay  = $('promptReorgOverlay');
+  const prInputState        = $('prInputState');
+  const prLoadingState      = $('prLoadingState');
+  const prLoadingText       = $('prLoadingText');
+  const prProgressBar       = $('prProgressBar');
+  const prCloseBtn          = $('prCloseBtn');
+  const prPromptArea        = $('prPromptArea');
+  const prDirDisplay        = $('prDirDisplay');
+  const prDirPickerBtn      = $('prDirPickerBtn');
+  const prAnalyzeBtn        = $('prAnalyzeBtn');
+  const prHistoryBtn        = $('prHistoryBtn');
+  const prUndoLogBtn        = $('prUndoLogBtn');
+  const prCancelPipeline    = $('prCancelPipeline');
+  const tmplScrollRow       = $('tmplScrollRow');
+  const tmplCatFilters      = $('tmplCatFilters');
+
+  const reorgPreviewOverlay = $('reorgPreviewOverlay');
+  const prPreviewSubtitle   = $('prPreviewSubtitle');
+  const prPreviewSummary    = $('prPreviewSummary');
+  const prTreeContainer     = $('prTreeContainer');
+  const prFileList          = $('prFileList');
+  const prApproveBtn        = $('prApproveBtn');
+  const prPreviewCancel     = $('prPreviewCancel');
+  const prSaveTmplRow       = $('prSaveTmplRow');
+  const prSaveTmplBtn       = $('prSaveTmplBtn');
+
+  const reorgHistoryOverlay = $('reorgHistoryOverlay');
+  const prHistoryList       = $('prHistoryList');
+  const prHistoryClose      = $('prHistoryClose');
+
+  const undoLogNavBtn       = $('undoLogNavBtn');
+
+  let prTargetDir      = null;
+  let prCurrentPreview = null;
+  let _pipelineCancelled = false;
+
+  // ── Helper ──────────────────────────────────────
+
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function prShowInput() {
+    prInputState.classList.remove('hidden');
+    prLoadingState.classList.add('hidden');
+  }
+
+  function prShowLoading(msg, pct) {
+    prInputState.classList.add('hidden');
+    prLoadingState.classList.remove('hidden');
+    if (prLoadingText) prLoadingText.textContent = msg;
+    if (prProgressBar) prProgressBar.style.width = (pct || 0) + '%';
+  }
+
+  function updateProgressStep(stage, pct) {
+    const stageMap = {
+      scanning: 'prstep-scanning',
+      analyzing: 'prstep-analyzing',
+      generating_reasons: 'prstep-reasons',
+      building_preview: 'prstep-preview',
+    };
+    const allStages = ['prstep-scanning','prstep-analyzing','prstep-reasons','prstep-preview'];
+    const current = stageMap[stage];
+    let reached = false;
+    for (const s of allStages) {
+      const el = $(s);
+      if (!el) continue;
+      const icon = el.querySelector('.pr-batch-step-icon');
+      if (s === current) {
+        el.className = 'pr-batch-step active';
+        if (icon) icon.textContent = '⏳';
+        reached = true;
+      } else if (!reached) {
+        el.className = 'pr-batch-step done';
+        if (icon) icon.textContent = '✅';
+      } else {
+        el.className = 'pr-batch-step';
+        if (icon) icon.textContent = '⬜';
+      }
+    }
+    if (stage === 'done') {
+      allStages.forEach((s) => {
+        const el = $(s);
+        if (el) { el.className = 'pr-batch-step done'; const icon = el.querySelector('.pr-batch-step-icon'); if (icon) icon.textContent = '✅'; }
+      });
+    }
+    if (prProgressBar) prProgressBar.style.width = (pct || 0) + '%';
+    if (prLoadingText && stage !== 'done') {
+      const msgs = {
+        scanning: 'Scanning files...',
+        analyzing: 'AI analyzing structure...',
+        generating_reasons: 'Generating explanations...',
+        building_preview: 'Building preview...',
+      };
+      prLoadingText.textContent = msgs[stage] || '';
+    }
+  }
+
+  function prRelativeDest(to, base) {
+    const sep = to.includes('/') ? '/' : '\\';
+    let rel = to;
+    if (rel.startsWith(base)) rel = rel.slice(base.length);
+    rel = rel.replace(/^[/\\]/, '');
+    const parts = rel.split(/[/\\]/);
+    return parts.slice(0, -1).join(' / ') || '(root)';
+  }
+
+  // ── Templates init ───────────────────────────────
+
+  if (window._templatesModule && tmplScrollRow) {
+    window._templatesModule.init(tmplScrollRow, tmplCatFilters, (prompt, id) => {
+      if (prPromptArea) {
+        prPromptArea.value = prompt;
+        updateAnalyzeBtn();
+        prPromptArea.focus();
+      }
+    });
+  }
+
+  // ── Analyze button enable/disable ───────────────
+
+  function updateAnalyzeBtn() {
+    if (prAnalyzeBtn) {
+      prAnalyzeBtn.disabled = !(prPromptArea?.value?.trim() && prTargetDir);
+    }
+  }
+
+  if (prPromptArea) prPromptArea.addEventListener('input', updateAnalyzeBtn);
+
+  // ── Listen for pipeline progress ─────────────────
+
+  if (window.api?.on?.promptReorgProgress) {
+    window.api.on.promptReorgProgress((data) => {
+      if (data.stage) {
+        updateProgressStep(data.stage, data.pct || 0);
+        if (data.message && prLoadingText) prLoadingText.textContent = data.message;
+      }
+    });
+  }
+
+  // ── Open/close prompt overlay ───────────────────��
+
+  if (smartReorgBtn) {
+    smartReorgBtn.addEventListener('click', openPromptOverlay);
+  }
+
+  function openPromptOverlay() {
+    prShowInput();
+    promptReorgOverlay.classList.remove('hidden');
+    prPromptArea?.focus();
+    // Refresh templates each time we open
+    if (window._templatesModule && tmplScrollRow) {
+      window._templatesModule.refresh(tmplScrollRow, (prompt) => {
+        if (prPromptArea) { prPromptArea.value = prompt; updateAnalyzeBtn(); }
+      });
+    }
+  }
+
+  function closePromptOverlay() {
+    promptReorgOverlay.classList.add('hidden');
+    prShowInput();
+  }
+
+  if (prCloseBtn) prCloseBtn.addEventListener('click', closePromptOverlay);
+  if (promptReorgOverlay) {
+    promptReorgOverlay.addEventListener('click', (e) => {
+      if (e.target === promptReorgOverlay) closePromptOverlay();
+    });
+  }
+
+  // ── Directory picker ─────────────────────────────
+
+  if (prDirPickerBtn) {
+    prDirPickerBtn.addEventListener('click', async () => {
+      try {
+        const dir = await window.api.dialog.openFolder();
+        if (dir) {
+          prTargetDir = dir;
+          prDirDisplay.textContent = dir;
+          prDirDisplay.title = dir;
+          updateAnalyzeBtn();
+        }
+      } catch (e) {
+        showToast('Could not open folder picker: ' + (e.message || e), 3000);
+      }
+    });
+  }
+
+  // ── Cancel pipeline ──────────────────────────────
+
+  if (prCancelPipeline) {
+    prCancelPipeline.addEventListener('click', () => {
+      _pipelineCancelled = true;
+      closePromptOverlay();
+    });
+  }
+
+  // ── Analyze (full pipeline) ──────────────────────
+
+  if (prAnalyzeBtn) {
+    prAnalyzeBtn.addEventListener('click', runAnalysis);
+  }
+
+  async function runAnalysis() {
+    const promptText = prPromptArea?.value?.trim();
+    if (!promptText) {
+      showToast('Please describe how you want your files organized.', 3000);
+      prPromptArea?.focus();
+      return;
+    }
+    if (!prTargetDir) {
+      showToast('Please select a folder to reorganize.', 3000);
+      return;
+    }
+
+    _pipelineCancelled = false;
+    prShowLoading('Scanning files...', 5);
+    updateProgressStep('scanning', 5);
+
+    try {
+      // Use full pipeline (scan + analyze + reasons + preview)
+      const result = await window.api.promptReorg.runPipeline(promptText, prTargetDir);
+
+      if (_pipelineCancelled) { prShowInput(); return; }
+
+      if (result?.error || !result?.preview) {
+        showToast(result?.error || 'Analysis failed. Try rephrasing your prompt.', 5000);
+        prShowInput();
+        return;
+      }
+
+      prCurrentPreview = result.preview;
+      closePromptOverlay();
+      renderPreview(result.preview);
+      reorgPreviewOverlay.classList.remove('hidden');
+
+      // Show save-as-template hint
+      if (prSaveTmplRow) prSaveTmplRow.style.display = 'block';
+
+    } catch (err) {
+      if (!_pipelineCancelled) {
+        showToast('Smart Organize error: ' + (err.message || err), 5000);
+      }
+      prShowInput();
+    }
+  }
+
+  // ── Render preview ────────────────────────────────
+
+  function renderPreview(preview) {
+    const approvedMoves = preview.moves.filter((m) => m.approved);
+    const folderCount = preview.proposedStructure.length;
+    const lowConfCount = preview.moves.filter((m) => m.confidence < 0.6).length;
+
+    if (prPreviewSubtitle) prPreviewSubtitle.textContent = `"${preview.prompt}"`;
+
+    if (prPreviewSummary) {
+      let html = `<strong>${approvedMoves.length}</strong> file${approvedMoves.length === 1 ? '' : 's'} `;
+      html += `will be moved into <strong>${folderCount}</strong> folder${folderCount === 1 ? '' : 's'}`;
+      if (preview.unmoved.length > 0) html += ` &nbsp;•&nbsp; <span style="color:var(--ds-text-dim)">${preview.unmoved.length} unchanged</span>`;
+      if (lowConfCount > 0) html += ` &nbsp;•&nbsp; <span style="color:var(--ds-amber)">🟡 ${lowConfCount} low-confidence (unchecked)</span>`;
+      prPreviewSummary.innerHTML = html;
+    }
+
+    // Folder tree
+    if (prTreeContainer) {
+      prTreeContainer.innerHTML = preview.proposedStructure.map((node) => {
+        const childRows = (node.children || []).map((c) =>
+          `<div class="pr-tree-child">
+             <span class="pr-tree-icon" style="font-size:11px;">📂</span>
+             <span class="pr-tree-name">${esc(c.name)}</span>
+             <span class="pr-tree-count">${c.fileCount}</span>
+           </div>`
+        ).join('');
+        return `<div class="pr-tree-node">
+          <div class="pr-tree-folder">
+            <span class="pr-tree-icon">📁</span>
+            <span class="pr-tree-name">${esc(node.name)}</span>
+            <span class="pr-tree-count">${node.fileCount} file${node.fileCount === 1 ? '' : 's'}</span>
+          </div>
+          ${childRows}
+        </div>`;
+      }).join('');
+    }
+
+    // File list
+    if (prFileList) {
+      prFileList.innerHTML = preview.moves.map((move, idx) => {
+        const isLowConf = move.confidence < 0.6;
+        const confClass = isLowConf ? 'low' : 'high';
+        const confPct = Math.round((move.confidence || 0.85) * 100);
+        const destFolder = prRelativeDest(move.to, preview.targetDirectory);
+        const reason = move.reason || '';
+        return `<div class="pr-file-row${isLowConf ? ' low-conf' : ''}">
+           <label class="pr-file-check">
+             <input type="checkbox" class="pr-move-check" data-idx="${idx}" ${move.approved ? 'checked' : ''}>
+             <div class="pr-file-info">
+               <span class="pr-file-name">${esc(move.file?.name || move.file?.fileName || '')}</span>
+               <span class="pr-file-path">${esc(move.file?.parent || '')} → ${esc(destFolder)}</span>
+               ${reason ? `<span class="pr-file-reason">💡 ${esc(reason)}</span>` : ''}
+             </div>
+             <span class="pr-conf-badge ${confClass}">${confPct}%</span>
+           </label>
+         </div>`;
+      }).join('');
+
+      // Unchanged/unmoved section
+      if (preview.unmoved && preview.unmoved.length > 0) {
+        prFileList.innerHTML += `
+          <div style="padding:7px 12px;font-size:11px;color:var(--ds-text-dim);border-top:1px solid var(--ds-border);">
+            Unchanged (${preview.unmoved.length}): ${preview.unmoved.slice(0,5).map((f) => esc(f.name || f.fileName)).join(', ')}${preview.unmoved.length > 5 ? '...' : ''}
+          </div>`;
+      }
+
+      // Wire checkboxes
+      prFileList.querySelectorAll('.pr-move-check').forEach((cb) => {
+        cb.addEventListener('change', (e) => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          prCurrentPreview.moves[idx].approved = e.target.checked;
+          refreshApproveCount();
+        });
+      });
+    }
+
+    refreshApproveCount();
+  }
+
+  function refreshApproveCount() {
+    if (!prCurrentPreview || !prApproveBtn) return;
+    const count = prCurrentPreview.moves.filter((m) => m.approved).length;
+    prApproveBtn.textContent = `Approve & Organize (${count})`;
+    prApproveBtn.disabled = count === 0;
+  }
+
+  // ── Close preview ──────────────────────────────
+
+  function closePreviewOverlay() {
+    reorgPreviewOverlay.classList.add('hidden');
+    if (prSaveTmplRow) prSaveTmplRow.style.display = 'none';
+    prCurrentPreview = null;
+  }
+
+  if (reorgPreviewOverlay) {
+    reorgPreviewOverlay.addEventListener('click', (e) => {
+      if (e.target === reorgPreviewOverlay) closePreviewOverlay();
+    });
+  }
+  if (prPreviewCancel) prPreviewCancel.addEventListener('click', closePreviewOverlay);
+
+  // ── Save as template ──────────────────────────
+
+  if (prSaveTmplBtn) {
+    prSaveTmplBtn.addEventListener('click', () => {
+      if (!prCurrentPreview?.prompt) return;
+      const saveTmplOverlay = $('saveTmplOverlay');
+      const saveTmplName = $('saveTmplName');
+      if (saveTmplName) saveTmplName.value = '';
+      const saveTmplIcon = $('saveTmplIcon');
+      if (saveTmplIcon) saveTmplIcon.value = '📁';
+      if (saveTmplOverlay) saveTmplOverlay.classList.remove('hidden');
+    });
+  }
+
+  // ── Save template confirm ──────────────────────
+
+  const saveTmplConfirmBtn = $('saveTmplConfirmBtn');
+  const saveTmplCancelBtn  = $('saveTmplCancelBtn');
+  const saveTmplOverlay    = $('saveTmplOverlay');
+
+  if (saveTmplConfirmBtn) {
+    saveTmplConfirmBtn.addEventListener('click', async () => {
+      const name     = $('saveTmplName')?.value?.trim();
+      const icon     = $('saveTmplIcon')?.value?.trim() || '📁';
+      const category = $('saveTmplCategory')?.value || 'general';
+      const prompt   = prCurrentPreview?.prompt || '';
+      if (!name) { showToast('Please enter a template name.', 2000); return; }
+      try {
+        await window.api.templates.saveCustom(name, prompt, icon, category);
+        showToast(`Template "${name}" saved!`, 3000);
+        if (saveTmplOverlay) saveTmplOverlay.classList.add('hidden');
+        if (window._templatesModule && tmplScrollRow) {
+          window._templatesModule.refresh(tmplScrollRow, (p) => {
+            if (prPromptArea) { prPromptArea.value = p; updateAnalyzeBtn(); }
+          });
+        }
+      } catch (e) {
+        showToast('Save failed: ' + (e.message || e), 3000);
+      }
+    });
+  }
+
+  if (saveTmplCancelBtn) {
+    saveTmplCancelBtn.addEventListener('click', () => {
+      if (saveTmplOverlay) saveTmplOverlay.classList.add('hidden');
+    });
+  }
+
+  // ── Approve & Organize ────────────────────────
+
+  if (prApproveBtn) {
+    prApproveBtn.addEventListener('click', async () => {
+      if (!prCurrentPreview) return;
+      const approvedCount = prCurrentPreview.moves.filter((m) => m.approved).length;
+      if (approvedCount === 0) {
+        showToast('No files selected to move. Check at least one file.', 3000);
+        return;
+      }
+
+      prApproveBtn.disabled = true;
+      prApproveBtn.textContent = 'Organizing...';
+
+      try {
+        const result = await window.api.promptReorg.execute(prCurrentPreview);
+        closePreviewOverlay();
+
+        const successMsg = `✅ Moved ${result.moved} file${result.moved === 1 ? '' : 's'}` +
+          (result.failed?.length > 0 ? ` (${result.failed.length} failed)` : '');
+        showToast(successMsg, 5000);
+        feedAdd(successMsg);
+
+        // Show post-op notification bar
+        showPostOpBar(successMsg, result.undoLogId || result.operationId, prCurrentPreview?.prompt);
+
+        // Refresh known folders
+        if (DEST_DIR) {
+          try {
+            const folders = await window.api.folders.scan(DEST_DIR);
+            knownFolders = folders;
+          } catch (_) {}
+        }
+      } catch (err) {
+        showToast('Organize failed: ' + (err.message || err), 5000);
+        prApproveBtn.disabled = false;
+        refreshApproveCount();
+      }
+    });
+  }
+
+  // ── History ───────────────────────────────────
+
+  if (prHistoryBtn) {
+    prHistoryBtn.addEventListener('click', async () => {
+      closePromptOverlay();
+      await renderHistory();
+      if (reorgHistoryOverlay) reorgHistoryOverlay.classList.remove('hidden');
+    });
+  }
+
+  if (prHistoryClose) prHistoryClose.addEventListener('click', () => reorgHistoryOverlay?.classList.add('hidden'));
+  if (reorgHistoryOverlay) {
+    reorgHistoryOverlay.addEventListener('click', (e) => {
+      if (e.target === reorgHistoryOverlay) reorgHistoryOverlay.classList.add('hidden');
+    });
+  }
+
+  async function renderHistory() {
+    if (!prHistoryList) return;
+    prHistoryList.innerHTML = '<div style="color:var(--ds-text-dim);font-size:13px;text-align:center;padding:20px;">Loading...</div>';
+    try {
+      const history = await window.api.promptReorg.getHistory();
+      if (!history?.operations?.length) {
+        prHistoryList.innerHTML = '<div style="color:var(--ds-text-dim);font-size:13px;text-align:center;padding:24px;">No history yet.</div>';
+        return;
+      }
+      prHistoryList.innerHTML = history.operations.map((op) => {
+        const date = new Date(op.timestamp).toLocaleString();
+        return `<div class="pr-history-item">
+          <div class="pr-history-main">
+            <div class="pr-history-prompt">"${esc(op.prompt)}"</div>
+            <div class="pr-history-meta">${esc(date)} &nbsp;•&nbsp; ${op.fileCount} file${op.fileCount === 1 ? '' : 's'} moved</div>
+          </div>
+          <button class="btn btn-sm ${op.canUndo ? 'btn-ghost' : ''} pr-undo-btn"
+            data-id="${esc(op.id)}" ${op.canUndo ? '' : 'disabled'}
+            style="${op.canUndo ? '' : 'opacity:0.38;cursor:default;'}">
+            ${op.canUndo ? '↩ Undo' : 'Undone'}
+          </button>
+        </div>`;
+      }).join('');
+
+      prHistoryList.querySelectorAll('.pr-undo-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const opId = btn.dataset.id;
+          btn.disabled = true;
+          btn.textContent = 'Undoing...';
+          try {
+            const result = await window.api.promptReorg.undo(opId);
+            const msgs = [];
+            if (result.restored > 0) msgs.push(`↩ Restored ${result.restored} file${result.restored === 1 ? '' : 's'}`);
+            if (result.errors?.length > 0) msgs.push(`${result.errors.length} couldn't be restored`);
+            showToast(msgs.join(' — ') || 'Nothing restored.', 5000);
+            if (result.restored > 0) feedAdd(`↩ Undid reorganization: restored ${result.restored} file${result.restored === 1 ? '' : 's'}`);
+            await renderHistory();
+          } catch (e) {
+            showToast('Undo failed: ' + (e.message || e), 4000);
+            await renderHistory();
+          }
+        });
+      });
+    } catch (err) {
+      prHistoryList.innerHTML = `<div style="color:var(--ds-red);font-size:13px;text-align:center;padding:20px;">Failed to load history: ${esc(err.message || String(err))}</div>`;
+    }
+  }
+
+  // ── Undo log nav button ───────────────────────
+
+  if (undoLogNavBtn) {
+    undoLogNavBtn.addEventListener('click', () => openUndoLog());
+  }
+  if (prUndoLogBtn) {
+    prUndoLogBtn.addEventListener('click', () => { closePromptOverlay(); openUndoLog(); });
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  UNDO LOG PANEL
+// ═══════════════════════════════════════════════════════════════
+
+function openUndoLog() {
+  renderUndoLog();
+  const overlay = $('undoLogOverlay');
+  if (overlay) overlay.classList.remove('hidden');
+}
+
+(function undoLogModule() {
+  const overlay      = $('undoLogOverlay');
+  const closeBtn     = $('undoLogCloseBtn');
+  const clearBtn     = $('undoLogClearBtn');
+  const listEl       = $('undoLogList');
+
+  if (closeBtn) closeBtn.addEventListener('click', () => overlay?.classList.add('hidden'));
+  if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm('Clear all undo history? This cannot be undone.')) return;
+      await window.api.undoLog.clear().catch(() => {});
+      renderUndoLog();
+    });
+  }
+})();
+
+async function renderUndoLog() {
+  const listEl = $('undoLogList');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div style="text-align:center;color:var(--ds-text-dim);font-size:13px;padding:24px;">Loading...</div>';
+
+  try {
+    const ops = await window.api.undoLog.get();
+    if (!ops || ops.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;color:var(--ds-text-dim);font-size:13px;padding:32px;">No history yet.<br>Organize some files to get started.</div>';
+      return;
+    }
+
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // Group by date
+    const groups = {};
+    for (const op of ops) {
+      const d = new Date(op.timestamp);
+      const key = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(op);
+    }
+
+    let html = '';
+    for (const [label, group] of Object.entries(groups)) {
+      html += `<div class="undo-log-group-label">${esc(label)}</div>`;
+      for (const op of group) {
+        const time = new Date(op.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        const srcIcon = op.source === 'prompt' ? '✨' : op.source === 'auto-sort' ? '⚡' : '📂';
+        const alreadyUndone = !op.canUndo && op.undoneAt;
+        html += `<div class="undo-log-item${alreadyUndone ? ' undone' : ''}" data-id="${esc(op.id)}">
+          <div class="undo-log-item-header">
+            <div class="undo-log-item-info">
+              <div class="undo-log-item-title">${srcIcon} ${esc(op.description)}</div>
+              <div class="undo-log-item-meta">${esc(time)}  •  ${op.moves?.length || 0} file${(op.moves?.length || 0) === 1 ? '' : 's'}
+                ${op.prompt ? `  •  "<em>${esc(op.prompt.slice(0, 40))}${op.prompt.length > 40 ? '…' : ''}</em>"` : ''}
+              </div>
+            </div>
+            <div class="undo-log-item-actions">
+              ${alreadyUndone
+                ? `<span class="undo-log-undone-badge">✓ Undone</span>`
+                : `<button class="btn btn-ghost btn-sm undo-log-undo-btn" data-id="${esc(op.id)}">↩ Undo</button>`
+              }
+              <button class="btn btn-ghost btn-sm undo-log-detail-btn" data-id="${esc(op.id)}" style="font-size:10px;">Details</button>
+            </div>
+          </div>
+          <div class="undo-log-detail-list hidden" id="uldl-${esc(op.id)}">
+            ${(op.moves || []).slice(0, 20).map((m) =>
+              `<div class="undo-log-detail-row">
+                <span class="undo-log-detail-name">${esc(m.fileName)}</span>
+                <span class="undo-log-detail-arrow">→</span>
+                <span class="undo-log-detail-dest">${esc(m.toPath?.split(/[/\\]/).slice(-2).join('/') || '')}</span>
+                ${m.reason ? `<span style="font-size:10px;color:rgba(255,255,255,0.25);margin-left:6px;">💡 ${esc(m.reason)}</span>` : ''}
+              </div>`
+            ).join('')}
+            ${(op.moves?.length || 0) > 20 ? `<div style="color:rgba(255,255,255,0.3);font-size:10px;padding:4px 0;">…and ${(op.moves.length - 20)} more</div>` : ''}
+          </div>
+        </div>`;
+      }
+    }
+    listEl.innerHTML = html;
+
+    // Wire undo buttons
+    listEl.querySelectorAll('.undo-log-undo-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const opId = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = 'Undoing...';
+        try {
+          const result = await window.api.undoLog.undo(opId);
+          const restoredCount = result.restored || 0;
+          const skippedCount  = result.skipped || 0;
+          let msg = restoredCount > 0 ? `↩ Restored ${restoredCount} file${restoredCount === 1 ? '' : 's'}` : 'Nothing restored';
+          if (skippedCount > 0) msg += ` (${skippedCount} already gone)`;
+          showToast(msg, 5000);
+          feedAdd(msg);
+          await renderUndoLog();
+        } catch (e) {
+          showToast('Undo failed: ' + (e.message || e), 4000);
+          await renderUndoLog();
+        }
+      });
+    });
+
+    // Wire detail toggles
+    listEl.querySelectorAll('.undo-log-detail-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const detailEl = $(`uldl-${btn.dataset.id}`);
+        if (detailEl) {
+          detailEl.classList.toggle('hidden');
+          btn.textContent = detailEl.classList.contains('hidden') ? 'Details' : 'Hide';
+        }
+      });
+    });
+
+  } catch (err) {
+    listEl.innerHTML = `<div style="color:var(--ds-red);text-align:center;padding:24px;font-size:13px;">Failed to load history: ${String(err?.message || err)}</div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  POST-OPERATION NOTIFICATION BAR
+// ═══════════════════════════════════════════════════════════════
+
+(function postOpNotification() {
+  const bar         = $('postOpBar');
+  const msgEl       = $('postOpMsg');
+  const undoBtn     = $('postOpUndoBtn');
+  const viewBtn     = $('postOpViewBtn');
+  const dismissBtn  = $('postOpDismissBtn');
+
+  let _currentOpId = null;
+  let _dismissTimer = null;
+
+  function hideBar() {
+    if (bar) bar.classList.add('hidden');
+    if (_dismissTimer) { clearTimeout(_dismissTimer); _dismissTimer = null; }
+  }
+
+  if (dismissBtn) dismissBtn.addEventListener('click', hideBar);
+
+  if (undoBtn) {
+    undoBtn.addEventListener('click', async () => {
+      if (!_currentOpId) return;
+      undoBtn.disabled = true;
+      undoBtn.textContent = 'Undoing...';
+      try {
+        const result = await window.api.undoLog.undo(_currentOpId);
+        const restoredCount = result.restored || 0;
+        showToast(`↩ Restored ${restoredCount} file${restoredCount === 1 ? '' : 's'}`, 4000);
+        feedAdd(`↩ Undid: restored ${restoredCount} file${restoredCount === 1 ? '' : 's'}`);
+        hideBar();
+      } catch (e) {
+        showToast('Undo failed: ' + (e.message || e), 4000);
+        undoBtn.disabled = false;
+        undoBtn.textContent = '↩ Undo';
+      }
+    });
+  }
+
+  if (viewBtn) {
+    viewBtn.addEventListener('click', () => {
+      hideBar();
+      openUndoLog();
+    });
+  }
+
+  // Expose so executePreview can trigger it
+  window._showPostOpBar = function(msg, opId) {
+    _currentOpId = opId;
+    if (msgEl) msgEl.textContent = msg;
+    if (undoBtn) { undoBtn.disabled = false; undoBtn.textContent = '↩ Undo'; }
+    if (bar) bar.classList.remove('hidden');
+    if (_dismissTimer) clearTimeout(_dismissTimer);
+    _dismissTimer = setTimeout(() => hideBar(), 15000);
+  };
+})();
+
+function showPostOpBar(msg, opId, prompt) {
+  if (window._showPostOpBar) window._showPostOpBar(msg, opId);
+}
+
+// Also listen to the IPC event for operations triggered elsewhere
+if (window.api?.on?.promptReorgExecuted) {
+  window.api.on.promptReorgExecuted((data) => {
+    const msg = `✅ Moved ${data.moved} file${data.moved === 1 ? '' : 's'}${data.failed > 0 ? ` (${data.failed} failed)` : ''}`;
+    showPostOpBar(msg, data.undoLogId || data.operationId, data.prompt);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AI HEALTH EVENTS
+// ═══════════════════════════════════════════════════════════════
+
+(function aiHealthEvents() {
+  if (window.api?.on?.aiRestarting) {
+    window.api.on.aiRestarting(() => {
+      const statusText = $('statusText');
+      if (statusText) statusText.textContent = 'AI restarting...';
+    });
+  }
+  if (window.api?.on?.aiRecovered) {
+    window.api.on.aiRecovered(() => {
+      const statusDot = $('statusDot');
+      const statusText = $('statusText');
+      if (statusDot) statusDot.classList.add('ok');
+      if (statusText) statusText.textContent = 'AI ready';
+      showToast('The AI engine recovered and is ready.', 3000);
+    });
+  }
+  if (window.api?.on?.aiFailed) {
+    window.api.on.aiFailed((data) => {
+      const statusDot = $('statusDot');
+      const statusText = $('statusText');
+      if (statusDot) statusDot.classList.remove('ok');
+      if (statusText) statusText.textContent = 'AI unavailable';
+      showToast(data?.message || 'The AI engine hit a snag. Try restarting the app.', 8000);
+    });
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  FIRST-RUN ONBOARDING (prompt-first, 3-step flow)
+// ═══════════════════════════════════════════════════════════════
+
+(function firstRunOnboarding() {
+  const overlay         = $('firstRunOverlay');
+  if (!overlay) return;
+
+  // Steps
+  const steps = ['frStep1','frStep2','frStep3','frStep4'].map($);
+
+  // Step 1 elements
+  const frFolderDisplay   = $('frFolderDisplay');
+  const frChooseFolderBtn = $('frChooseFolderBtn');
+  const frSkipBtn         = $('frSkipBtn');
+  const frNextToStep2Btn  = $('frNextToStep2Btn');
+
+  // Step 2 elements
+  const frPromptArea    = $('frPromptArea');
+  const frBackBtn       = $('frBackBtn');
+  const frAnalyzeBtn    = $('frAnalyzeBtn');
+  const frFileCount     = $('frFileCount');
+  const frProgressBar   = $('frProgressBar');
+  const frAnalyzingMsg  = $('frAnalyzingMsg');
+
+  // Step 4 elements
+  const frStatFiles         = $('frStatFiles');
+  const frStatFolders       = $('frStatFolders');
+  const frViewResultsBtn    = $('frViewResultsBtn');
+  const frOrganizeAnotherBtn = $('frOrganizeAnotherBtn');
+  const frSetupAutoBtn      = $('frSetupAutoBtn');
+
+  let frTargetDir   = null;
+  let frManifest    = null;
+  let frLastResult  = null;
+
+  function showStep(n) {
+    steps.forEach((s, i) => {
+      if (s) s.classList.toggle('active', i === n);
+    });
+  }
+
+  async function checkAndShow() {
+    try {
+      const done = await window.api.system.hasCompletedOnboarding();
+      if (!done) overlay.classList.remove('hidden');
+    } catch {
+      // If API not available, don't show
+    }
+  }
+
+  function closeOnboarding() {
+    overlay.classList.add('hidden');
+    window.api.system.completeOnboarding().catch(() => {});
+  }
+
+  // Show on startup (with slight delay)
+  setTimeout(checkAndShow, 800);
+
+  // Step 1: Choose folder
+  if (frChooseFolderBtn) {
+    frChooseFolderBtn.addEventListener('click', async () => {
+      try {
+        const dir = await window.api.dialog.openFolder();
+        if (!dir) return;
+        frTargetDir = dir;
+        frFolderDisplay.textContent = dir.split(/[/\\]/).pop() || dir;
+        frFolderDisplay.classList.add('selected');
+        frFolderDisplay.title = dir;
+        frNextToStep2Btn.disabled = false;
+
+        // Pre-scan to get file count
+        try {
+          frManifest = await window.api.promptReorg.scan(dir);
+          if (frFileCount) frFileCount.textContent = `${dir.split(/[/\\]/).pop()} — ${frManifest.totalCount} files found`;
+        } catch {}
+      } catch (e) {
+        showToast('Could not pick folder: ' + (e.message || e), 3000);
+      }
+    });
+  }
+
+  if (frSkipBtn) {
+    frSkipBtn.addEventListener('click', closeOnboarding);
+  }
+
+  if (frNextToStep2Btn) {
+    frNextToStep2Btn.addEventListener('click', () => showStep(1));
+  }
+
+  // Step 2: Prompt + templates
+  // Wire template chips
+  document.querySelectorAll('.firstrun-tmpl-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (frPromptArea) {
+        frPromptArea.value = chip.dataset.prompt;
+        updateFrAnalyzeBtn();
+        frPromptArea.focus();
+      }
+    });
+  });
+
+  function updateFrAnalyzeBtn() {
+    if (frAnalyzeBtn) frAnalyzeBtn.disabled = !frPromptArea?.value?.trim();
+  }
+  if (frPromptArea) frPromptArea.addEventListener('input', updateFrAnalyzeBtn);
+
+  if (frBackBtn) frBackBtn.addEventListener('click', () => showStep(0));
+
+  // Listen for pipeline progress
+  if (window.api?.on?.promptReorgProgress) {
+    window.api.on.promptReorgProgress((data) => {
+      if (frProgressBar && data.pct !== undefined) {
+        frProgressBar.style.width = data.pct + '%';
+      }
+      if (frAnalyzingMsg && data.message) {
+        frAnalyzingMsg.textContent = data.message;
+      }
+    });
+  }
+
+  if (frAnalyzeBtn) {
+    frAnalyzeBtn.addEventListener('click', async () => {
+      const promptText = frPromptArea?.value?.trim();
+      if (!promptText || !frTargetDir) return;
+
+      showStep(2); // Show analyzing step
+      if (frProgressBar) frProgressBar.style.width = '5%';
+      if (frAnalyzingMsg) frAnalyzingMsg.textContent = 'Scanning and building your organization plan...';
+
+      try {
+        const result = await window.api.promptReorg.runPipeline(promptText, frTargetDir);
+
+        if (result?.error || !result?.preview) {
+          showStep(1); // Back to prompt step
+          showToast(result?.error || 'Analysis failed. Try rephrasing.', 5000);
+          return;
+        }
+
+        // Show the preview overlay (same one used by Smart Organize)
+        const previewOverlay = $('reorgPreviewOverlay');
+        const previewSubtitle = $('prPreviewSubtitle');
+        const fileList = $('prFileList');
+        const treeContainer = $('prTreeContainer');
+        const approveBtn = $('prApproveBtn');
+        const summary = $('prPreviewSummary');
+
+        // Store the preview for the approve button
+        // We'll patch the approve button to call back here
+        if (previewSubtitle) previewSubtitle.textContent = `"${promptText}"`;
+
+        // Use the enhanced renderer from initEnhancedSmartReorg
+        // by triggering a custom event
+        const previewEvent = new CustomEvent('firstrun:preview-ready', { detail: result.preview });
+        document.dispatchEvent(previewEvent);
+
+        overlay.classList.add('hidden');
+        if (previewOverlay) previewOverlay.classList.remove('hidden');
+
+        // Patch the approve button to show success step after executing
+        const originalApprove = approveBtn?.onclick;
+        if (approveBtn) {
+          const origClick = approveBtn.getAttribute('data-fr-patched');
+          if (!origClick) {
+            approveBtn.setAttribute('data-fr-patched', '1');
+            approveBtn.addEventListener('click', async function frApproveListener() {
+              // After execution, listen for the result via IPC event
+              const handler = (data) => {
+                frLastResult = data;
+                if (frStatFiles)   frStatFiles.textContent   = data.moved;
+                if (frStatFolders) frStatFolders.textContent = data.failed > 0 ? `${data.moved} moved` : new Set().size || '—';
+                overlay.classList.remove('hidden');
+                showStep(3);
+                approveBtn.removeEventListener('click', frApproveListener);
+              };
+              // One-time listener
+              if (window.api?.on?.promptReorgExecuted) {
+                const origCallback = () => {};
+                window.api.on.promptReorgExecuted((data) => {
+                  if (frStatFiles)   frStatFiles.textContent   = data.moved;
+                  if (frStatFolders) frStatFolders.textContent = data.failed > 0 ? `${data.moved} moved` : '—';
+                  overlay.classList.remove('hidden');
+                  showStep(3);
+                });
+              }
+            }, { once: true });
+          }
+        }
+
+      } catch (err) {
+        showStep(1);
+        showToast('Error: ' + (err.message || err), 5000);
+      }
+    });
+  }
+
+  // Step 4 buttons
+  if (frViewResultsBtn) {
+    frViewResultsBtn.addEventListener('click', () => {
+      closeOnboarding();
+      if (frTargetDir) {
+        // Open folder in system file manager via Electron shell
+        try { require('electron').shell?.openPath(frTargetDir); } catch {}
+      }
+    });
+  }
+
+  if (frOrganizeAnotherBtn) {
+    frOrganizeAnotherBtn.addEventListener('click', () => {
+      frTargetDir = null;
+      frManifest = null;
+      if (frFolderDisplay) { frFolderDisplay.textContent = 'No folder selected'; frFolderDisplay.classList.remove('selected'); }
+      if (frPromptArea) frPromptArea.value = '';
+      if (frNextToStep2Btn) frNextToStep2Btn.disabled = true;
+      showStep(0);
+    });
+  }
+
+  if (frSetupAutoBtn) {
+    frSetupAutoBtn.addEventListener('click', () => {
+      closeOnboarding();
+      // Open settings/watcher settings
+      const settingsBtn = $('settingsBtn');
+      if (settingsBtn) settingsBtn.click();
+    });
+  }
+
+  // Allow preview data to be set from pipeline
+  document.addEventListener('firstrun:preview-ready', (e) => {
+    // The enhanced smart reorg module will render it
+    // We just need to expose the preview object
+    window._frPreview = e.detail;
+  });
+
+})();

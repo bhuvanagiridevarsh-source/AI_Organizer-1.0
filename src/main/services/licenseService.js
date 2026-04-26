@@ -18,7 +18,7 @@ const https = require("https");
 
 // ── Configuration ──────────────────────────────────────────
 
-const TESTING_MODE = false; // production — set to true only during local dev
+const TESTING_MODE = true; // free access until license backend is deployed
 
 // After deploying /backend to Vercel, paste your deployment URL here.
 // If this is still a placeholder the app will degrade gracefully instead of crashing.
