@@ -1,11 +1,578 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
-  <title>AI Organizer</title>
-  <style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:">
+  <title>organize · system janizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+
+/* ════════════════════════════════════════════════════════
+   DESIGN SYSTEM — DARK (default)
+════════════════════════════════════════════════════════ */
+:root {
+  --paper:       #0F0D0B;
+  --surface:     #161310;
+  --surface-2:   #1E1A16;
+  --surface-3:   #252018;
+  --kachi:       #1A2233;
+  --kachi-soft:  #243044;
+  --kachi-line:  rgba(42,62,92,0.6);
+  --ink:         #E8E2D9;
+  --ink-2:       #A89E91;
+  --ink-3:       #6B6259;
+  --ink-4:       #3D3830;
+  --seal:        #C94020;
+  --seal-soft:   #A33318;
+  --seal-glow:   rgba(201,64,32,0.15);
+  --line:        rgba(232,226,217,0.07);
+  --line-2:      rgba(232,226,217,0.04);
+  --shoji:       rgba(232,226,217,0.028);
+  --overlay-bg:  rgba(8,7,5,0.88);
+  --topbar-bg:   rgba(8,7,5,0.80);
+  --rail-bg:     rgba(8,7,5,0.40);
+  --scrollbar:   rgba(232,226,217,0.10);
+  /* Legacy compat */
+  --ds-void:     #020617;
+  --ds-surface:  rgba(15,23,42,0.40);
+  --ds-panel:    rgba(15,23,42,0.60);
+  --ds-border:   rgba(255,255,255,0.08);
+  --ds-border-h: rgba(255,255,255,0.15);
+  --ds-text:     #E8E2D9;
+  --ds-text-dim: rgba(232,226,217,0.45);
+  --ds-cyan:     #A89E91;
+  --ds-emerald:  #4a7c52;
+  --ds-amber:    #C94020;
+  --ds-red:      #C94020;
+  --ds-purple:   #6B6259;
+  --ds-blue:     #2A3E5C;
+  --ds-neon:     #C94020;
+}
+
+html.light {
+  --paper:       #F1ECE1;
+  --surface:     #F8F5EC;
+  --surface-2:   #FDFAF3;
+  --surface-3:   #EDE8DC;
+  --kachi:       #E4EAF5;
+  --kachi-soft:  #D4DEF0;
+  --kachi-line:  rgba(42,62,92,0.22);
+  --ink:         #1B1813;
+  --ink-2:       #524C42;
+  --ink-3:       #8B8478;
+  --ink-4:       #B6AFA1;
+  --seal:        #B23A1F;
+  --seal-soft:   #8C2E18;
+  --seal-glow:   rgba(178,58,31,0.10);
+  --line:        rgba(27,24,19,0.09);
+  --line-2:      rgba(27,24,19,0.05);
+  --shoji:       rgba(27,24,19,0.04);
+  --overlay-bg:  rgba(241,236,225,0.90);
+  --topbar-bg:   rgba(241,236,225,0.90);
+  --rail-bg:     rgba(241,236,225,0.55);
+  --scrollbar:   rgba(27,24,19,0.12);
+  --ds-text:     #1B1813;
+  --ds-text-dim: rgba(27,24,19,0.55);
+  --ds-border:   rgba(27,24,19,0.09);
+  --ds-border-h: rgba(27,24,19,0.18);
+  --ds-surface:  rgba(248,245,236,0.6);
+  --ds-panel:    rgba(248,245,236,0.85);
+}
+
+/* ── Base ── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background 350ms ease, color 350ms ease;
+  background-image:
+    linear-gradient(var(--shoji) 1px, transparent 1px),
+    linear-gradient(90deg, var(--shoji) 1px, transparent 1px),
+    radial-gradient(ellipse at 30% 20%, rgba(26,34,51,0.35) 0, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(201,64,32,0.03) 0, transparent 50%);
+  background-size: 48px 48px, 48px 48px, 100% 100%, 100% 100%;
+}
+html.light body {
+  background-image:
+    linear-gradient(var(--shoji) 1px, transparent 1px),
+    linear-gradient(90deg, var(--shoji) 1px, transparent 1px),
+    radial-gradient(ellipse at 30% 20%, rgba(210,220,240,0.35) 0, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(178,58,31,0.03) 0, transparent 50%);
+  background-size: 48px 48px, 48px 48px, 100% 100%, 100% 100%;
+}
+
+/* ── Typography ── */
+.serif-i { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; letter-spacing: -0.02em; }
+.serif   { font-family: 'Instrument Serif', serif; font-weight: 400; }
+.mono    { font-family: 'Geist Mono', monospace; font-weight: 400; }
+.mono-l  { font-family: 'Geist Mono', monospace; font-weight: 300; }
+.quiet   { color: var(--ink-3); }
+
+/* ── Resets ── */
+button, input, textarea, select { font: inherit; color: inherit; }
+button { background: none; border: 0; outline: 0; cursor: pointer; padding: 0; }
+input, textarea { background: transparent; border: 0; outline: 0; }
+::selection { background: rgba(201,64,32,0.22); color: var(--ink); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
+:focus-visible { outline: 1px solid var(--seal); outline-offset: 2px; }
+
+/* ── Animations ── */
+@keyframes fade-up   { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes fade-in   { from { opacity:0; } to { opacity:1; } }
+@keyframes fadeInUp  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes dot-breathe { 0%,100%{opacity:0.35} 50%{opacity:1} }
+@keyframes pulse-dot   { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes seal-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(201,64,32,0); }
+  45%  { box-shadow: 0 0 0 7px rgba(201,64,32,0.15); }
+  100% { box-shadow: 0 0 0 14px rgba(201,64,32,0); }
+}
+
+/* Scanline texture */
+.scanline-layer {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 5px, rgba(232,226,217,0.009) 5px, rgba(232,226,217,0.009) 6px);
+}
+html.light .scanline-layer {
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 5px, rgba(27,24,19,0.007) 5px, rgba(27,24,19,0.007) 6px);
+}
+
+/* ── Shell ── */
+#root { display: flex; flex-direction: column; height: 100vh; position: relative; z-index: 1; }
+.body-row { display: flex; flex: 1; min-height: 0; }
+
+/* ════════════════════════════════════════════════════════
+   TOPBAR
+════════════════════════════════════════════════════════ */
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 20px;
+  height: 48px; min-height: 48px;
+  border-bottom: 1px solid var(--line);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(16px);
+  flex: none;
+  transition: background 350ms ease;
+  position: relative; z-index: 10;
+}
+.wordmark-text {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic; font-size: 18px;
+  color: var(--ink); letter-spacing: -0.01em; line-height: 1;
+  flex: none;
+}
+.topbar-stat {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; letter-spacing: 0.09em; color: var(--ink-3);
+  white-space: nowrap;
+}
+.topbar-spacer { flex: 1; }
+.vdiv { width: 1px; background: var(--line); align-self: stretch; margin: 11px 0; flex: none; }
+
+/* Icon toggle buttons */
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid var(--line) !important;
+  background: transparent !important;
+  font-size: 12px; color: var(--ink-3);
+  transition: all 180ms ease; flex: none;
+  padding: 0 !important;
+}
+.icon-btn:hover { border-color: rgba(201,64,32,0.4) !important; color: var(--ink); background: var(--surface-2) !important; }
+.icon-btn.active { border-color: rgba(201,64,32,0.5) !important; color: var(--seal); background: var(--seal-glow) !important; }
+
+/* Google Drive quick-access in topbar */
+.topbar-cloud {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px !important;
+  border: 1px solid var(--line) !important;
+  background: transparent !important;
+  font-size: 12px; color: var(--ink-3);
+  transition: all 180ms ease; flex: none;
+}
+.topbar-cloud:hover { border-color: var(--ink-4) !important; color: var(--ink-2); background: var(--surface-2) !important; }
+
+/* Ask / chat button in topbar */
+.topbar-ask {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 12px !important;
+  border: 1px solid rgba(201,64,32,0.2) !important;
+  background: var(--surface-2) !important;
+  font-size: 12px; color: var(--ink-2);
+  transition: all 180ms ease; flex: none;
+}
+.topbar-ask:hover { border-color: rgba(201,64,32,0.4) !important; color: var(--ink); }
+.kbdchord {
+  font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4);
+  display: flex; gap: 2px;
+}
+.kbdchord span { padding: 1px 4px; border: 1px solid var(--ink-4); }
+
+/* Undo/redo buttons */
+.topbar-hist {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  border: 1px solid var(--line) !important;
+  background: transparent !important;
+  font-size: 13px; color: var(--ink-3);
+  transition: all 160ms ease;
+  padding: 0 !important;
+  font-family: serif;
+}
+.topbar-hist:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3) !important; }
+.topbar-hist:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Status dot */
+.status-dot-new { width: 6px; height: 6px; border-radius: 50%; background: var(--seal); flex: none; }
+.status-dot-new.ok { background: #4a7c52; box-shadow: 0 0 5px rgba(74,124,82,0.5); }
+
+/* ════════════════════════════════════════════════════════
+   SIDE RAIL
+════════════════════════════════════════════════════════ */
+.rail {
+  width: 210px; flex: none;
+  border-right: 1px solid var(--line);
+  padding: 20px 14px 14px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  background: var(--rail-bg);
+  transition: background 350ms ease;
+}
+.rail-group { margin-bottom: 24px; }
+.rail-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px; letter-spacing: 0.14em; color: var(--ink-4);
+  text-transform: uppercase; margin-bottom: 7px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rail-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.rail-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 4px; font-size: 13px; color: var(--ink-2);
+  transition: color 140ms ease; cursor: pointer;
+  border: none !important; background: none !important;
+  width: 100%; text-align: left;
+}
+.rail-item:hover { color: var(--ink); }
+.rail-item.active { color: var(--ink); }
+.rail-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: transparent; flex: none; transition: background 140ms ease;
+}
+.rail-item.active .rail-dot { background: var(--seal); }
+.rail-count {
+  font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4); margin-left: auto;
+}
+.rail-item.active .rail-count { color: var(--ink-3); }
+.rail-spacer { flex: 1; }
+
+/* Tidy button */
+.tidy-btn {
+  padding: 13px 13px !important; background: var(--surface-2) !important;
+  border: 1px solid var(--line) !important;
+  text-align: left; width: 100%; cursor: pointer;
+  transition: border-color 200ms ease, background 350ms ease;
+  position: relative; overflow: hidden; margin-bottom: 12px;
+  font-size: 13px;
+}
+.tidy-btn:hover { border-color: rgba(201,64,32,0.3) !important; }
+.tidy-kanji {
+  position: absolute; right: 10px; bottom: 4px;
+  font-size: 40px; font-family: serif;
+  color: rgba(201,64,32,0); line-height: 1; pointer-events: none;
+  transition: color 400ms ease;
+}
+.tidy-btn:hover .tidy-kanji { color: rgba(201,64,32,0.05); }
+html.show-kanji .tidy-kanji { color: rgba(201,64,32,0.08) !important; }
+html.show-kanji .disambig-kanji { opacity: 1; }
+html.show-kanji .footer-kanji { display: block; }
+/* kanji hidden by default; show-kanji class reveals them */
+.disambig-kanji { opacity: 0; transition: opacity 300ms ease; }
+.footer-kanji { display: none; }
+
+/* Sys status */
+.sys-status { padding-top: 12px; border-top: 1px solid var(--line); }
+.sys-row {
+  display: flex; align-items: center; gap: 6px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; color: var(--ink-4); line-height: 1.9;
+}
+.sys-led { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+.sys-led.ready  { background: #4a7c52; box-shadow: 0 0 4px rgba(74,124,82,0.5); }
+.sys-led.active { background: var(--seal); animation: dot-breathe 1.5s ease-in-out infinite; }
+.sys-led.error  { background: var(--seal); }
+
+/* ════════════════════════════════════════════════════════
+   MAIN CONTENT
+════════════════════════════════════════════════════════ */
+.main-col {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.main-scroll {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 0;
+}
+
+/* Ask bar (wraps the search input) */
+.ask-bar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 13px 24px;
+  display: flex; align-items: center; gap: 14px;
+  transition: border-color 220ms ease, background 220ms ease;
+  flex: none;
+}
+.ask-bar:focus-within {
+  border-color: rgba(201,64,32,0.25);
+  background: var(--surface-2);
+}
+.ask-prompt {
+  font-size: 15px; color: rgba(201,64,32,0.55);
+  font-family: 'Geist Mono', monospace; flex: none;
+  transition: color 200ms ease;
+}
+.ask-bar:focus-within .ask-prompt { color: var(--seal); }
+.ask-input-new {
+  flex: 1 !important; font-size: 14px !important;
+  color: var(--ink) !important;
+  background: none !important; border: 0 !important; outline: 0 !important;
+  font-family: 'Geist', sans-serif !important;
+}
+.ask-input-new::placeholder { color: var(--ink-4) !important; font-style: italic; }
+
+/* Ask-bar inline chat button */
+.ask-bar-chat-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px !important;
+  border: 1px solid var(--line) !important;
+  background: transparent !important;
+  font-size: 11px; color: var(--ink-4);
+  transition: all 160ms ease; flex: none;
+  font-family: 'Geist Mono', monospace;
+}
+.ask-bar-chat-btn:hover {
+  border-color: rgba(201,64,32,0.3) !important;
+  color: var(--seal);
+}
+
+/* Stats bar */
+.stats-bar-new {
+  display: flex; gap: 1px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.stat-card-new {
+  flex: 1; padding: 10px 16px;
+  border-right: 1px solid var(--line);
+}
+.stat-card-new:last-child { border-right: none; }
+.stat-card-new .label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-4); margin-bottom: 2px;
+}
+.stat-card-new .value {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px; font-weight: 400; color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+/* Content area (table, feed etc) */
+.content-area {
+  flex: 1; padding: 20px 28px 40px; overflow-y: auto;
+}
+
+/* Action bar */
+.action-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  flex: none;
+}
+.action-bar.hidden { display: none; }
+
+/* Dest banner */
+.dest-banner {
+  padding: 8px 24px;
+  background: rgba(201,64,32,0.05);
+  border-bottom: 1px solid rgba(201,64,32,0.15);
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em;
+}
+.dest-banner strong { color: var(--ink); }
+
+/* Watcher bar */
+.watcher-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.watcher-bar.hidden { display: none; }
+.watcher-bar-left { display: flex; align-items: center; gap: 8px; }
+.watcher-bar-right { display: flex; align-items: center; gap: 6px; }
+.watcher-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+.watcher-dot.active { background: var(--seal); animation: dot-breathe 1.5s ease-in-out infinite; }
+.watcher-label { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em; }
+.watcher-folders { font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4); }
+
+/* Cloud bar */
+.cloud-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 24px; background: var(--surface-2);
+  border-bottom: 1px solid var(--line); font-size: 12px;
+}
+.cloud-bar.hidden { display: none; }
+.cloud-bar-left  { display: flex; align-items: center; gap: 8px; }
+.cloud-bar-right { display: flex; align-items: center; gap: 6px; }
+.cloud-bar-label { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-3); }
+.cloud-sync-progress { height: 1px; background: var(--line); position: relative; }
+.cloud-sync-progress.hidden { display: none; }
+.cloud-sync-progress-fill { position: absolute; left:0; top:0; height:100%; background: var(--seal); transition: width 300ms ease; }
+
+/* Update banner */
+.update-banner {
+  background: var(--surface-2); border-bottom: 1px solid rgba(201,64,32,0.2);
+  padding: 8px 20px; display: flex; align-items: center; justify-content: center;
+  gap: 12px; font-size: 12px; color: var(--seal);
+}
+.update-banner.hidden { display: none; }
+.update-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--seal); animation: dot-breathe 1.5s ease-in-out infinite; }
+.update-btn {
+  padding: 3px 12px; border: 1px solid rgba(201,64,32,0.3) !important;
+  background: rgba(201,64,32,0.08) !important; color: var(--seal);
+  font-size: 11px; transition: all 0.2s;
+}
+.update-btn:hover { background: rgba(201,64,32,0.18) !important; }
+
+/* RAM banner */
+.ram-banner {
+  background: rgba(201,64,32,0.06); border-bottom: 1px solid rgba(201,64,32,0.25);
+  padding: 8px 20px; display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--seal);
+}
+.ram-banner.hidden { display: none; }
+.ram-banner-icon { font-size: 13px; flex-shrink: 0; }
+.ram-banner-btn {
+  padding: 3px 12px !important; border: 1px solid rgba(201,64,32,0.35) !important;
+  background: rgba(201,64,32,0.1) !important; color: var(--seal);
+  font-size: 11px; transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+}
+.ram-banner-btn:hover { background: rgba(201,64,32,0.22) !important; }
+.ram-banner-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ram-banner-close { margin-left: auto; background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 14px; padding: 2px 6px; }
+.ram-banner-close:hover { color: var(--ink); }
+
+/* Buttons (compat layer for old DS classes) */
+.btn {
+  padding: 6px 14px; font-size: 11px; letter-spacing: 0.03em;
+  transition: all 180ms ease; cursor: pointer;
+  border: 1px solid var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--ink-2);
+}
+.btn:hover:not(:disabled) { border-color: var(--ink-3) !important; color: var(--ink); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-primary { border-color: rgba(201,64,32,0.3) !important; color: var(--seal) !important; background: rgba(201,64,32,0.07) !important; }
+.btn-primary:hover:not(:disabled) { background: rgba(201,64,32,0.15) !important; }
+.btn-success  { border-color: rgba(74,124,82,0.4) !important; color: #4a7c52 !important; background: rgba(74,124,82,0.08) !important; }
+.btn-success:hover:not(:disabled) { background: rgba(74,124,82,0.15) !important; }
+.btn-danger   { border-color: rgba(201,64,32,0.5) !important; color: var(--seal) !important; background: rgba(201,64,32,0.1) !important; }
+.btn-ghost    { border-color: var(--line) !important; }
+.btn-organize { border-color: rgba(74,124,82,0.5) !important; color: #4a7c52 !important; background: rgba(74,124,82,0.1) !important; font-weight: 500; }
+.btn-organize:hover:not(:disabled) { background: rgba(74,124,82,0.2) !important; }
+.btn-sm { padding: 4px 10px !important; font-size: 11px !important; }
+.btn-chat { border-color: rgba(42,62,92,0.5) !important; color: var(--ink-2) !important; background: rgba(42,62,92,0.1) !important; }
+.btn-smart-reorg { border-color: rgba(201,64,32,0.35) !important; color: var(--seal) !important; background: rgba(201,64,32,0.06) !important; }
+.btn:hover { transform: none !important; filter: none !important; }
+.btn:active { transform: none !important; }
+.btn-undo { font-size: 13px; }
+
+/* Count / icloud badge */
+.count { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-3); margin: 0 4px; }
+.icloud-badge { font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4); letter-spacing: 0.05em; }
+.icloud-badge.hidden { display: none; }
+
+/* Search / neural container */
+#neuralAnswerContainer { padding: 0 28px; }
+#neuralAnswerContainer:empty { display: none; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 64px 40px;
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  color: var(--ink-3);
+}
+.empty-state p { font-size: 16px; margin-bottom: 8px; line-height: 1.5; }
+.empty-state strong { color: var(--ink-2); }
+
+/* Results table (keep old table styles working) */
+#tableContainer { padding: 0 28px; margin-top: 4px; }
+#tableContainer:empty { display: none; }
+
+/* Feed */
+#feed { padding: 0 28px 24px; margin-top: 8px; }
+#feed:empty { display: none; }
+
+/* Search upgrade banner */
+#searchUpgradeBanner {
+  position: fixed; bottom: 0; left: 210px; right: 0;
+  background: var(--surface-2); border-top: 1px solid var(--line);
+  padding: 8px 20px; display: flex; align-items: center; gap: 14px;
+  font-size: 12px; color: var(--ink-3); z-index: 9000; transition: opacity 0.3s;
+}
+#searchUpgradeBanner.hidden { display: none; }
+#searchUpgradeBanner .sub-progress-bar-wrap { flex:1; height:2px; background:var(--line); }
+#searchUpgradeBanner .sub-progress-bar { height:100%; background:var(--seal); transition:width 0.3s ease; }
+#searchUpgradeBanner .sub-pct { min-width:36px; text-align:right; color:var(--seal); font-family:'Geist Mono',monospace; font-size:10px; }
+
+/* Learner indicator */
+#learnerIndicator {
+  display: flex; align-items: center; gap: 6px;
+}
+#learnerIndicator .learner-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--seal); animation: dot-breathe 1.8s ease-in-out infinite;
+  flex: none;
+}
+#learnerLabel { font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4); }
+#learnerStats  { font-family: 'Geist Mono', monospace; font-size: 9px; color: var(--ink-4); margin-left: 2px; }
+
+/* Post-op bar */
+.post-op-bar {
+  position: fixed; bottom: 0; left: 210px; right: 0; z-index: 8500;
+  background: var(--surface-2); border-top: 1px solid var(--line);
+  padding: 10px 20px; display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--ink-2);
+}
+.post-op-bar.hidden { display: none; }
+.post-op-bar-btn {
+  padding: 4px 12px; border: 1px solid var(--line) !important;
+  background: var(--surface) !important; font-size: 11px; color: var(--ink-2);
+  transition: all 160ms ease;
+}
+.post-op-bar-btn:hover { border-color: var(--ink-3) !important; color: var(--ink); }
+
+</style>
+<style>
+/* ════════════════════════════════════════════════════════
+   LEGACY OVERLAY / MODAL STYLES (preserved from old design)
+   These power all the settings panels, rename modals, etc.
+════════════════════════════════════════════════════════ */
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     /* ── Deep Space Design System ───────────────────── */
@@ -2249,130 +2816,313 @@
       color: rgba(255,255,255,0.3);
       margin-top: 12px;
     }
-  </style>
+  
+</style>
 </head>
 <body>
+<div class="scanline-layer"></div>
 
-  <!-- Auto-Update Banner (shown/hidden by JS) -->
-  <div class="update-banner hidden" id="updateBanner">
-    <span class="update-dot"></span>
-    <span id="updateBannerText">An update is available — downloading in background...</span>
+<!-- Auto-Update Banner -->
+<div class="update-banner hidden" id="updateBanner">
+  <span class="update-dot"></span>
+  <span id="updateBannerText">An update is available.</span>
+  <button class="update-btn" id="updateRestartBtn">Restart & Update</button>
+</div>
+
+<!-- Low-RAM Warning Banner -->
+<div class="ram-banner hidden" id="ramWarningBanner" role="alert">
+  <span class="ram-banner-icon">⚠</span>
+  <span id="ramBannerText">AI features paused — low memory. Close other apps to free RAM.</span>
+  <button class="ram-banner-btn" id="ramBannerRetryBtn">Retry AI</button>
+  <button class="ram-banner-close" id="ramBannerDismissBtn" aria-label="Dismiss">✕</button>
+</div>
+
+<!-- ROOT LAYOUT -->
+<div id="root">
+
+  <!-- ═══ TOPBAR ═══════════════════════════════════════════ -->
+  <div class="topbar" id="appHeader">
+    <span class="wordmark-text">organize</span>
+    <div class="topbar-spacer"></div>
+
+    <!-- Hidden original mode/header buttons (kept for renderer.js compatibility) -->
+    <div style="display:none">
+      <div id="modeSwitch">
+        <button id="personalModeBtn">Personal</button>
+        <button id="workModeBtn">Work</button>
+      </div>
+      <button id="selectFilesBtn">Select Files</button>
+      <button id="selectFolderBtn">Select Folder</button>
+      <button id="scanAllBtn">Scan All Files</button>
+      <button id="newCategoryBtn">+ New Category</button>
+      <button id="scanBtn">Scan Now</button>
+      <button id="refreshFpBtn">Refresh</button>
+      <button id="cleanPoolBtn">Clean Pool</button>
+      <button id="clearLearningBtn">Clear Learning</button>
+      <button id="exportLogBtn">Export Log</button>
+      <button id="exportKnowledgeBtn">Export Knowledge</button>
+      <button id="entExportPdfBtn">Export PDF</button>
+      <button id="entLanBtn">LAN</button>
+      <button id="entRetentionBtn">Retention</button>
+    </div>
+
+    <!-- Theme toggle -->
+    <button class="icon-btn" id="themeToggle" title="Switch to light mode" style="font-size:14px">☾</button>
+    <div class="vdiv"></div>
+
+    <!-- Google Drive quick-access -->
+    <button class="topbar-cloud" id="gdriveTopBtn" title="Open Google Drive" aria-label="Google Drive">
+      <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex:none">
+        <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA"/>
+        <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.5A9.06 9.06 0 000 53h27.5z" fill="#00AC47"/>
+        <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25A9.06 9.06 0 0087.3 53H59.8L73.55 76.8z" fill="#EA4335"/>
+        <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832D"/>
+        <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2z" fill="#2684FC"/>
+        <path d="M73.4 26.5l-13.75-23.8A9.17 9.17 0 0056.35.4L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
+      </svg>
+      <span style="font-size:11px;color:var(--ink-3)">Drive</span>
+    </button>
+
+    <!-- Ask AI (maps to chatBtn) -->
+    <button class="topbar-ask" id="chatBtn" title="Ask AI about your files (⌘K)" aria-label="Open AI chat">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--seal)">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+      <span class="serif-i" style="font-size:13px">ask AI</span>
+      <div class="kbdchord"><span>⌘</span><span>K</span></div>
+    </button>
+
+    <!-- Undo / Redo -->
+    <button class="topbar-hist" id="undoBtn" title="Undo last move" aria-label="Undo" disabled>↩</button>
+    <button class="topbar-hist" id="redoBtn" title="Redo" aria-label="Redo" disabled>↪</button>
+
+    <div class="vdiv"></div>
+    <!-- Status -->
+    <span class="status-dot-new" id="statusDot"></span>
+    <span class="topbar-stat" id="statusText" style="color:var(--ink-3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Starting…</span>
+    <span class="icloud-badge hidden" id="icloudBadge">☁ iCloud</span>
   </div>
 
-  <!-- Low-RAM Warning Banner -->
-  <div class="ram-banner hidden" id="ramWarningBanner" role="alert">
-    <span class="ram-banner-icon">⚠️</span>
-    <span id="ramBannerText">AI features are paused — your computer is low on memory. Close other apps to free up RAM.</span>
-    <button class="ram-banner-btn" id="ramBannerRetryBtn">Retry AI</button>
-    <button class="ram-banner-close" id="ramBannerDismissBtn" aria-label="Dismiss">✕</button>
-  </div>
+  <div class="body-row">
 
-  <!-- Header -->
-  <div class="header" id="appHeader">
-    <h1>AI Organizer</h1>
-    <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="Application mode">
-      <button class="mode-btn active" id="personalModeBtn" role="tab" aria-selected="true" aria-label="Switch to Personal mode">🏠 Personal</button>
-      <button class="mode-btn" id="workModeBtn" role="tab" aria-selected="false" aria-label="Switch to Work mode">🏢 Work</button>
-    </div>
-    <div class="header-right">
-      <button class="btn btn-primary btn-sm" id="selectFilesBtn" aria-label="Select files to classify">Select Files</button>
-      <button class="btn btn-primary btn-sm" id="selectFolderBtn" aria-label="Select folder to classify">Select Folder</button>
-      <button class="btn btn-ghost btn-sm" id="scanAllBtn" aria-label="Scan all files recursively">Scan All Files</button>
-      <button class="btn btn-success btn-sm" id="newCategoryBtn" aria-label="Create a new category folder">+ New Category</button>
-      <button class="btn btn-primary btn-sm" id="scanBtn" aria-label="Scan destination for existing folders">Scan Now</button>
-      <button class="btn btn-ghost btn-sm" id="settingsBtn" aria-label="Open settings">Settings</button>
-      <button class="btn btn-ghost btn-sm btn-undo" id="undoBtn" title="Undo last file move" aria-label="Undo last file move" disabled>↩</button>
-      <button class="btn btn-ghost btn-sm btn-undo" id="redoBtn" title="Redo last undo" aria-label="Redo last undo" disabled>↪</button>
-      <button class="btn btn-sm" id="gdriveBtn" title="Browse & organize Google Drive files"
-        style="background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;font-weight:600;"
-        aria-label="Open Google Drive browser">📁 Drive</button>
-      <button class="btn btn-chat btn-sm" id="chatBtn" title="Ask AI about your files" aria-label="Open AI chat assistant">💬 Ask AI</button>
-      <button class="btn btn-smart-reorg btn-sm" id="smartReorgBtn" title="Reorganize files using a plain-English prompt" aria-label="Open Smart Reorganize">✨ Smart Organize</button>
-      <button class="btn btn-ghost btn-sm" id="undoLogNavBtn" title="View organization history and undo operations" aria-label="Open Undo Log" style="font-size:14px;padding:5px 10px;">🕐</button>
-      <div class="status" role="status" aria-live="polite">
-        <span class="status-dot" id="statusDot" aria-hidden="true"></span>
-        <span id="statusText">Starting...</span>
+    <!-- ═══ SIDE RAIL ════════════════════════════════════════ -->
+    <nav class="rail">
+
+      <div class="rail-group">
+        <div class="rail-label">spaces</div>
+        <!-- Rail proxy buttons — clicking them triggers the hidden originals -->
+        <button class="rail-item active" data-proxy="personalModeBtn">
+          <div class="rail-dot"></div><span>personal</span>
+        </button>
+        <button class="rail-item" data-proxy="workModeBtn">
+          <div class="rail-dot"></div><span>work</span>
+        </button>
       </div>
-      <span class="icloud-badge" id="icloudBadge">☁️ iCloud Synced</span>
-    </div>
-  </div>
 
-  <!-- Main -->
-  <div class="main">
-
-    <!-- Destination banner -->
-    <div class="dest-banner" id="destBanner">
-      <span id="destBannerText">Sorting to: <strong>~/Desktop/AI_SORTED_FILES</strong></span>
-    </div>
-
-    <!-- Work Mode: Folder Watcher bar (shown only in Work Mode) -->
-    <div class="watcher-bar hidden" id="watcherBar">
-      <div class="watcher-bar-left">
-        <span class="watcher-dot" id="watcherDot"></span>
-        <span class="watcher-label" id="watcherLabel">Auto-Organize: Off</span>
-        <span class="watcher-folders" id="watcherFolders"></span>
+      <div class="rail-group">
+        <div class="rail-label">organize</div>
+        <button class="rail-item" data-proxy="selectFolderBtn">
+          <div class="rail-dot"></div><span>select folder</span>
+        </button>
+        <button class="rail-item" data-proxy="selectFilesBtn">
+          <div class="rail-dot"></div><span>select files</span>
+        </button>
+        <button class="rail-item" data-proxy="scanBtn">
+          <div class="rail-dot"></div><span>scan now</span>
+        </button>
+        <button class="rail-item" data-proxy="smartReorgBtn">
+          <div class="rail-dot"></div><span>smart organize</span>
+        </button>
+        <button class="rail-item" data-proxy="scanAllBtn">
+          <div class="rail-dot"></div><span>scan all</span>
+        </button>
       </div>
-      <div class="watcher-bar-right">
-        <button class="btn btn-ghost btn-sm" id="watcherAddBtn">+ Watch Folder</button>
-        <button class="btn btn-sm" id="watcherToggleBtn">Enable</button>
+
+      <div class="rail-group">
+        <div class="rail-label">cloud</div>
+        <!-- Google Drive — opens full GDrive panel via renderer.js -->
+        <button class="rail-item rail-item-gdrive" data-proxy="gdriveBtn" id="railGdriveBtn">
+          <svg width="12" height="12" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex:none;opacity:0.6">
+            <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA"/>
+            <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.5A9.06 9.06 0 000 53h27.5z" fill="#00AC47"/>
+            <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25A9.06 9.06 0 0087.3 53H59.8L73.55 76.8z" fill="#EA4335"/>
+            <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832D"/>
+            <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2z" fill="#2684FC"/>
+            <path d="M73.4 26.5l-13.75-23.8A9.17 9.17 0 0056.35.4L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
+          </svg>
+          <span>Google Drive</span>
+        </button>
+        <!-- iCloud sync log -->
+        <button class="rail-item" data-proxy="cloudSyncLogBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.5">
+            <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/>
+          </svg>
+          <span>cloud sync</span>
+        </button>
       </div>
-    </div>
 
-    <!-- Cloud Connectors bar -->
-    <div class="cloud-bar hidden" id="cloudBar">
-      <div class="cloud-bar-left">
-        <span style="font-size:14px;">☁️</span>
-        <span class="cloud-bar-label">Cloud Sync</span>
-        <span id="cloudChips"></span>
+      <div class="rail-group">
+        <div class="rail-label">tools</div>
+        <!-- AI Chat — opens the chat panel inline -->
+        <button class="rail-item" id="railChatBtn">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:0.55;color:var(--seal)">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <span>ask AI</span>
+        </button>
+        <button class="rail-item" data-proxy="settingsBtn">
+          <div class="rail-dot"></div><span>settings</span>
+        </button>
+        <button class="rail-item" data-proxy="undoLogNavBtn">
+          <div class="rail-dot"></div><span>history</span>
+        </button>
+        <button class="rail-item" data-proxy="newCategoryBtn">
+          <div class="rail-dot"></div><span>new category</span>
+        </button>
       </div>
-      <div class="cloud-bar-right">
-        <button class="btn btn-ghost btn-sm" id="cloudSettingsBtn">Configure</button>
-        <button class="btn btn-primary btn-sm" id="cloudSyncNowBtn">Sync Now</button>
+
+      <div class="rail-spacer"></div>
+
+      <!-- Organize all -->
+      <button class="tidy-btn" id="rail-organize-btn">
+        <div class="tidy-kanji">整</div>
+        <div class="serif-i" style="font-size:15px;color:var(--ink);margin-bottom:3px">organize all</div>
+        <div class="mono-l quiet" style="font-size:10px;letter-spacing:0.05em">confirm &amp; move files</div>
+      </button>
+
+      <!-- Sys status -->
+      <div class="sys-status">
+        <div class="sys-row">
+          <div class="sys-led ready" id="railStatusLed"></div>
+          <span id="railStatusText">ready</span>
+        </div>
+        <div id="learnerIndicator" title="AI is learning from your organized files">
+          <span class="learner-dot"></span>
+          <span id="learnerLabel">learner · idle</span>
+          <span id="learnerStats"></span>
+        </div>
       </div>
-    </div>
-    <div class="cloud-sync-progress hidden" id="cloudSyncProgress">
-      <div class="cloud-sync-progress-fill" id="cloudSyncFill" style="width:0%"></div>
-    </div>
+    </nav>
 
-    <!-- Neural Omnibar -->
-    <div class="search-bar">
-      <input type="text" id="deepSearchInput" aria-label="Search files or ask AI a question" placeholder="🔍 Search files or ask a question (e.g., 'budget report', 'Why is this file here?')...">
-    </div>
+    <!-- ═══ MAIN COLUMN ══════════════════════════════════════ -->
+    <div class="main-col">
 
-    <!-- Neural Answer Card (rendered by JS) -->
-    <div id="neuralAnswerContainer"></div>
-
-    <!-- Stats -->
-    <div class="stats-bar">
-      <div class="stat-card"><div class="label">Files</div><div class="value" id="statFiles">0</div></div>
-      <div class="stat-card"><div class="label">Folders</div><div class="value" id="statFolders">0</div></div>
-      <div class="stat-card"><div class="label">Review</div><div class="value" id="statReview">0</div></div>
-      <div class="stat-card"><div class="label">Corrections</div><div class="value" id="statCorrections">0</div></div>
-    </div>
-
-    <!-- Classification Results table -->
-    <div id="tableContainer">
-      <div class="empty-state">
-        <p>Click <strong>Select Files</strong> to pick files (all types allowed).</p>
-        <p>Nothing moves until you click <strong>Confirm</strong> or <strong>Organize All</strong>.</p>
+      <!-- Destination banner -->
+      <div class="dest-banner hidden" id="destBanner">
+        <span id="destBannerText">Sorting to: <strong>~/Desktop/AI_SORTED_FILES</strong></span>
       </div>
-    </div>
 
-    <!-- Action bar -->
-    <div class="action-bar hidden" id="actionBar">
-      <button class="btn btn-primary btn-sm" id="selectAllBtn" aria-label="Select all classified files">Select All</button>
-      <button class="btn btn-primary btn-sm" id="deselectAllBtn" aria-label="Deselect all files">Deselect All</button>
-      <div class="count" id="countLabel" aria-live="polite">0 files selected</div>
-      <button class="btn btn-danger btn-sm" id="cancelBtn" aria-label="Clear all files from queue">Cancel</button>
-      <button class="btn btn-success btn-sm" id="confirmBtn" aria-label="Move only approved files">Confirm</button>
-      <button class="btn btn-organize" id="organizeBtn" aria-label="Move all classified files">Organize All</button>
-    </div>
+      <!-- Watcher bar -->
+      <div class="watcher-bar hidden" id="watcherBar">
+        <div class="watcher-bar-left">
+          <span class="watcher-dot" id="watcherDot"></span>
+          <span class="watcher-label" id="watcherLabel">Auto-Organize: Off</span>
+          <span class="watcher-folders" id="watcherFolders"></span>
+        </div>
+        <div class="watcher-bar-right">
+          <button class="btn btn-ghost btn-sm" id="watcherAddBtn">+ Watch Folder</button>
+          <button class="btn btn-sm" id="watcherToggleBtn">Enable</button>
+        </div>
+      </div>
 
-    <!-- Activity feed -->
-    <div class="feed" id="feed" role="log" aria-live="polite" aria-label="Activity feed"></div>
-  </div>
+      <!-- Cloud bar -->
+      <div class="cloud-bar hidden" id="cloudBar">
+        <div class="cloud-bar-left">
+          <span>☁</span>
+          <span class="cloud-bar-label">Cloud Sync</span>
+          <span id="cloudChips"></span>
+        </div>
+        <div class="cloud-bar-right">
+          <button class="btn btn-ghost btn-sm" id="cloudSettingsBtn">Configure</button>
+          <button class="btn btn-primary btn-sm" id="cloudSyncNowBtn">Sync Now</button>
+        </div>
+      </div>
+      <div class="cloud-sync-progress hidden" id="cloudSyncProgress">
+        <div class="cloud-sync-progress-fill" id="cloudSyncFill" style="width:0%"></div>
+      </div>
 
-  <!-- AI Rename Modal -->
+      <!-- Ask / Search bar -->
+      <div class="ask-bar">
+        <span class="ask-prompt">›</span>
+        <input type="text" class="ask-input-new" id="deepSearchInput"
+          aria-label="Search files or ask AI"
+          placeholder="search files, or ask the AI a question…"/>
+        <button class="ask-bar-chat-btn" id="askBarChatBtn" title="Open AI chat (⌘K)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <span>chat</span>
+        </button>
+      </div>
+
+      <!-- Neural answer card -->
+      <div id="neuralAnswerContainer"></div>
+
+      <!-- Stats -->
+      <div class="stats-bar-new">
+        <div class="stat-card-new"><div class="label">Files</div><div class="value" id="statFiles">—</div></div>
+        <div class="stat-card-new"><div class="label">Folders</div><div class="value" id="statFolders">—</div></div>
+        <div class="stat-card-new"><div class="label">Needs review</div><div class="value" id="statReview">—</div></div>
+        <div class="stat-card-new"><div class="label">Corrections</div><div class="value" id="statCorrections">—</div></div>
+        <!-- Google Drive connection indicator -->
+        <div class="stat-card-new gdrive-stat" id="gdriveStatCard" style="cursor:pointer;flex:none;min-width:100px;" title="Open Google Drive">
+          <div class="label">Google Drive</div>
+          <div class="value" id="gdriveStatVal" style="font-size:13px;font-family:'Geist',sans-serif;font-weight:400;display:flex;align-items:center;gap:5px;padding-top:4px">
+            <span id="gdriveStatDot" style="width:5px;height:5px;border-radius:50%;background:var(--ink-4);flex:none"></span>
+            <span id="gdriveStatText" style="font-size:11px;color:var(--ink-3)">not connected</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable content -->
+      <div class="main-scroll">
+        <div class="content-area">
+          <!-- Classification Results -->
+          <div id="tableContainer">
+            <div class="empty-state">
+              <p>Click <strong>select folder</strong> in the sidebar to pick files.</p>
+              <p>Nothing moves until you click <strong>organize all</strong>.</p>
+            </div>
+          </div>
+          <!-- Activity feed -->
+          <div id="feed" role="log" aria-live="polite" aria-label="Activity feed"></div>
+        </div>
+      </div>
+
+      <!-- Action bar (shown when files are queued) -->
+      <div class="action-bar hidden" id="actionBar">
+        <button class="btn btn-ghost btn-sm" id="selectAllBtn">Select All</button>
+        <button class="btn btn-ghost btn-sm" id="deselectAllBtn">Deselect All</button>
+        <span class="count" id="countLabel">0 selected</span>
+        <button class="btn btn-danger btn-sm" id="cancelBtn">Cancel</button>
+        <button class="btn btn-success btn-sm" id="confirmBtn">Confirm</button>
+        <button class="btn btn-organize" id="organizeBtn">Organize All</button>
+      </div>
+
+    </div><!-- main-col -->
+  </div><!-- body-row -->
+</div><!-- root -->
+
+<!-- Hidden proxy button for smart reorg (needs original ID in DOM) -->
+<div style="display:none">
+  <button id="smartReorgBtn">Smart Organize</button>
+  <button id="gdriveBtn">Drive</button>
+  <button id="settingsBtn">Settings</button>
+  <button id="undoLogNavBtn">History</button>
+  <button id="cloudSyncLogBtn">Sync Log</button>
+  <div class="cloud-sync-log-panel hidden" id="cloudSyncLogPanel"></div>
+  <button id="cloudDetectBtn">Detect</button>
+  <button id="adminFooter"></button>
+</div>
+
+<!-- Search upgrade banner -->
+<div id="searchUpgradeBanner" class="hidden" aria-live="polite">
+  <span id="searchUpgradeLabel">Building search index…</span>
+  <div class="sub-progress-bar-wrap"><div class="sub-progress-bar" id="searchUpgradeBar" style="width:0%"></div></div>
+  <span class="sub-pct" id="searchUpgradePct">0%</span>
+</div>
+
+<!-- AI Rename Modal -->
   <div class="settings-overlay hidden" id="renameOverlay" role="dialog" aria-modal="true" aria-label="AI Rename">
     <div class="settings-panel" style="width:480px;">
       <h2>🏷️ AI Rename</h2>
@@ -2409,6 +3159,29 @@
       <div class="s-row"><span class="s-label">tesseract.js (OCR)</span><span class="s-val" id="capTesseract">...</span></div>
       <div class="s-row"><span class="s-label">Corrections</span><span class="s-val" id="capCorr">...</span></div>
       <div class="s-row"><span class="s-label">Noise folders</span><span class="s-val" id="capNoise" style="color:#aaa;font-weight:400;font-size:11px;max-width:240px;text-align:right;">...</span></div>
+
+      <!-- ── Workflow Triggers ─────────────────────────────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">Workflow Triggers</div>
+        <div class="s-row" style="border-bottom:none;">
+          <span class="s-label" style="display:flex;flex-direction:column;gap:2px;">
+            Auto-summarize new PDFs
+            <span style="font-size:10px;color:#666;font-weight:400;">Writes a companion -summary.txt when a PDF lands in a watched folder</span>
+          </span>
+          <label id="pdfSummaryToggleLabel" style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;flex-shrink:0;">
+            <input type="checkbox" id="pdfSummaryToggle" style="opacity:0;width:0;height:0;position:absolute;">
+            <span id="pdfSummaryTrack" style="
+              position:absolute;inset:0;border-radius:20px;background:#333;
+              transition:background .2s;
+            "></span>
+            <span id="pdfSummaryThumb" style="
+              position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;
+              background:#fff;transition:transform .2s;
+            "></span>
+          </label>
+        </div>
+      </div>
+
       <div class="s-actions">
         <button class="btn btn-danger btn-sm" id="clearLearningBtn">Clear Learning</button>
         <button class="btn btn-primary btn-sm" id="refreshFpBtn">Refresh Fingerprints</button>
@@ -3068,5 +3841,7 @@
   </div>
 
   <script src="renderer.js"></script>
+
+  <script src="ui-init.js"></script>
 </body>
 </html>

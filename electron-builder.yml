@@ -2,6 +2,11 @@ appId: com.systemjanitor.app
 productName: System-Janitor
 copyright: Copyright © 2025
 
+# beforeBuild: installs the correct platform esbuild binary before packing.
+# Needed for cross-platform builds (e.g. building Windows exe on macOS):
+# @esbuild/win32-x64 isn't installed by npm on macOS, so we add it here.
+beforeBuild: scripts/beforeBuild.js
+
 # Sign the app BEFORE electron-builder creates the DMG (correct order).
 # afterPack runs after the .app is built but before packaging into DMG/zip.
 afterPack: scripts/afterPack.js

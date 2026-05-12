@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>organize — ai library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* paper palette — subtle, warm, restrained */
+    --paper:        #F1ECE1;   /* kinari, the page itself */
+    --paper-deep:   #E7E1D2;
+    --surface:      #F8F5EC;   /* lifted card */
+    --surface-2:    #FBF9F2;   /* most lifted */
+    --ink:          #1B1813;   /* sumi, never pure black */
+    --ink-2:        #524C42;
+    --ink-3:        #8B8478;
+    --ink-4:        #B6AFA1;
+    --hairline:     rgba(27,24,19,0.09);
+    --hairline-2:   rgba(27,24,19,0.05);
+
+    /* singular accents — used like a stamp, not a coat of paint */
+    --seal:         #B23A1F;   /* vermillion / shu-iro */
+    --seal-soft:    #C56448;
+    --indigo:       #2A3E5C;   /* kachi-iro */
+    --indigo-soft:  #4F6885;
+    --moss:         #5B6B43;
+    --accent:       var(--seal);
+    --accent-soft:  var(--seal-soft);
+
+    --r: 3px;       /* the only radius worth having, mostly */
+    --pad: 28px;
+    --rail: 224px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Geist', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    letter-spacing: 0.005em;
+
+    /* faint paper texture — barely there */
+    background-image:
+      radial-gradient(circle at 18% 24%, rgba(27,24,19,0.012) 0, transparent 40%),
+      radial-gradient(circle at 78% 70%, rgba(27,24,19,0.014) 0, transparent 45%);
+  }
+
+  ::selection { background: rgba(178,58,31,0.18); color: var(--ink); }
+
+  .serif { font-family: 'Instrument Serif', 'Cormorant Garamond', serif; font-weight: 400; }
+  .serif-i { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; font-weight: 400; }
+
+  /* ultra-thin rule — used in place of borders */
+  .hr { height: 1px; background: var(--hairline); border: 0; }
+
+  /* a small filled circle. used as a status mark, the only iconographic element */
+  .seal {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex: none;
+  }
+
+  .quiet { color: var(--ink-3); }
+  .softer { color: var(--ink-2); }
+
+  button, input, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; padding: 0; }
+  input, textarea { background: transparent; border: 0; outline: 0; }
+
+  /* gentle ease used everywhere */
+  .t { transition: all 320ms cubic-bezier(.22,.61,.36,1); }
+  .t-fast { transition: all 180ms cubic-bezier(.22,.61,.36,1); }
+
+  /* scrollbars: barely visible */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(27,24,19,0.10); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(27,24,19,0.18); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  #root { height: 100vh; overflow: hidden; }
+
+  /* avoid focus rings ruining the calm; design our own */
+  :focus { outline: none; }
+  :focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+  /* keyframes used by the app */
+  @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ink-wash { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+
+  /* ── Tech layer ──────────────────────────────────────────── */
+
+  /* HankoMark pulse — slow breath when learner is active */
+  @keyframes hanko-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(178,58,31,0.0); }
+    40%  { box-shadow: 0 0 0 6px rgba(178,58,31,0.22); }
+    100% { box-shadow: 0 0 0 12px rgba(178,58,31,0.0); }
+  }
+  .hanko-active { animation: hanko-pulse 3s cubic-bezier(.4,0,.6,1) infinite; }
+
+  /* terminal cursor blink — appears on ask bar focus */
+  @keyframes cursor-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  .term-cursor::after {
+    content: '▋';
+    font-family: 'Geist Mono', monospace;
+    font-size: 0.9em;
+    color: var(--accent);
+    animation: cursor-blink 1s step-end infinite;
+    margin-left: 2px;
+    vertical-align: middle;
+  }
+
+  /* scanline texture — overlaid on ask bar when focused */
+  .scanlines {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px, transparent 3px,
+        rgba(27,24,19,0.018) 3px, rgba(27,24,19,0.018) 4px
+      ) !important;
+  }
+
+  /* live data readout pill */
+  .data-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px; letter-spacing: 0.07em;
+    color: var(--ink-3);
+    padding: 2px 8px;
+    border: 1px solid var(--hairline);
+  }
+  @keyframes dot-pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+  .data-pill-dot {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent);
+    animation: dot-pulse 2s ease-in-out infinite;
+    flex: none;
+  }
+
+  /* circuit trace background on collection cards */
+  .circuit-bg {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  }
+
+  /* confidence bar upgrades */
+  .conf-track { background: var(--hairline); position: relative; }
+  .conf-fill {
+    position: absolute; left: 0; top: 0; height: 100%;
+    background: var(--accent);
+    transition: width 700ms cubic-bezier(.22,.61,.36,1);
+  }
+
+  /* model download screen */
+  .model-dl-screen {
+    position: fixed; inset: 0;
+    background: var(--paper);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 0;
+    animation: fade-in 400ms ease;
+    z-index: 9999;
+  }
+
+  /* sys status line at bottom of rail */
+  .sys-line {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--ink-4);
+    padding: 12px 4px 0;
+    border-top: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 6px;
+    line-height: 1.6;
+  }
+  .sys-dot {
+    width: 5px; height: 5px; border-radius: 50%; flex: none;
+  }
+  .sys-dot.ready { background: #5B6B43; }
+  .sys-dot.loading { background: var(--accent); animation: dot-pulse 1.5s ease-in-out infinite; }
+  .sys-dot.offline { background: var(--ink-4); }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="application/json" id="speaker-notes">[]</script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="text/babel" src="library.jsx"></script>
+  <script type="text/babel" src="ask.jsx"></script>
+  <script type="text/babel" src="collection.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

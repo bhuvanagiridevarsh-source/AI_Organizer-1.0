@@ -631,5 +631,20 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeAllListeners("ai:failed");
       ipcRenderer.on("ai:failed", (_e, data) => callback(data));
     },
+    /** PDF summary workflow completed. Payload: { filename, sourcePath, summaryPath }. */
+    pdfSummaryDone: (callback) => {
+      ipcRenderer.removeAllListeners("workflow:pdf-summary-done");
+      ipcRenderer.on("workflow:pdf-summary-done", (_e, data) => callback(data));
+    },
+  },
+
+  // ── Workflow Engine ──────────────────────────────────
+  workflows: {
+    /** Get whether the auto-summarize PDF workflow is enabled. */
+    getPdfSummaryEnabled: () =>
+      ipcRenderer.invoke("workflow:get-pdf-summary-enabled"),
+    /** Enable or disable the auto-summarize PDF workflow. */
+    setPdfSummaryEnabled: (enabled) =>
+      ipcRenderer.invoke("workflow:set-pdf-summary-enabled", enabled),
   },
 });

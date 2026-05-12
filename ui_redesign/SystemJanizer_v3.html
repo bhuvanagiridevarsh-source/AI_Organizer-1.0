@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>system janizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+
+/* ══════════════════════════════════════════════════════════
+   PALETTE — DARK (default)
+══════════════════════════════════════════════════════════ */
+:root {
+  --paper:       #0F0D0B;
+  --surface:     #161310;
+  --surface-2:   #1E1A16;
+  --surface-3:   #252018;
+  --kachi:       #1A2233;
+  --kachi-soft:  #243044;
+  --kachi-line:  rgba(42,62,92,0.6);
+  --ink:         #E8E2D9;
+  --ink-2:       #A89E91;
+  --ink-3:       #6B6259;
+  --ink-4:       #3D3830;
+  --seal:        #C94020;
+  --seal-soft:   #A33318;
+  --seal-glow:   rgba(201,64,32,0.15);
+  --line:        rgba(232,226,217,0.07);
+  --line-2:      rgba(232,226,217,0.04);
+  --shoji:       rgba(232,226,217,0.028);
+  --overlay-bg:  rgba(8,7,5,0.85);
+  --topbar-bg:   rgba(8,7,5,0.75);
+  --rail-bg:     rgba(8,7,5,0.35);
+  --scrollbar:   rgba(232,226,217,0.10);
+}
+
+/* ══════════════════════════════════════════════════════════
+   PALETTE — LIGHT
+══════════════════════════════════════════════════════════ */
+html.light {
+  --paper:       #F1ECE1;
+  --surface:     #F8F5EC;
+  --surface-2:   #FDFAF3;
+  --surface-3:   #EDE8DC;
+  --kachi:       #E4EAF5;
+  --kachi-soft:  #D4DEF0;
+  --kachi-line:  rgba(42,62,92,0.22);
+  --ink:         #1B1813;
+  --ink-2:       #524C42;
+  --ink-3:       #8B8478;
+  --ink-4:       #B6AFA1;
+  --seal:        #B23A1F;
+  --seal-soft:   #8C2E18;
+  --seal-glow:   rgba(178,58,31,0.10);
+  --line:        rgba(27,24,19,0.09);
+  --line-2:      rgba(27,24,19,0.05);
+  --shoji:       rgba(27,24,19,0.04);
+  --overlay-bg:  rgba(241,236,225,0.88);
+  --topbar-bg:   rgba(241,236,225,0.88);
+  --rail-bg:     rgba(241,236,225,0.5);
+  --scrollbar:   rgba(27,24,19,0.12);
+}
+
+/* ══════════════════════════════════════════════════════════
+   BASE
+══════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Geist', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background 350ms ease, color 350ms ease;
+  background-image:
+    linear-gradient(var(--shoji) 1px, transparent 1px),
+    linear-gradient(90deg, var(--shoji) 1px, transparent 1px),
+    radial-gradient(ellipse at 30% 20%, rgba(26,34,51,0.4) 0, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(201,64,32,0.03) 0, transparent 50%);
+  background-size: 48px 48px, 48px 48px, 100% 100%, 100% 100%;
+}
+html.light body {
+  background-image:
+    linear-gradient(var(--shoji) 1px, transparent 1px),
+    linear-gradient(90deg, var(--shoji) 1px, transparent 1px),
+    radial-gradient(ellipse at 30% 20%, rgba(210,220,240,0.4) 0, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(178,58,31,0.03) 0, transparent 50%);
+  background-size: 48px 48px, 48px 48px, 100% 100%, 100% 100%;
+}
+
+/* ── Typography ── */
+.serif-i { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; letter-spacing: -0.02em; }
+.serif   { font-family: 'Instrument Serif', serif; font-weight: 400; }
+.mono    { font-family: 'Geist Mono', monospace; font-weight: 400; }
+.mono-l  { font-family: 'Geist Mono', monospace; font-weight: 300; }
+.quiet   { color: var(--ink-3); }
+
+/* ── Resets ── */
+button, input { font: inherit; color: inherit; background: none; border: 0; outline: 0; cursor: pointer; }
+::selection   { background: rgba(201,64,32,0.22); color: var(--ink); }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
+:focus-visible { outline: 1px solid var(--seal); outline-offset: 2px; }
+
+/* ══════════════════════════════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════════════════════════════ */
+@keyframes fade-up   { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes fade-in   { from { opacity:0; } to { opacity:1; } }
+@keyframes dot-breathe { 0%,100%{ opacity:0.35 } 50%{ opacity:1 } }
+@keyframes cursor-blink { 0%,49%{ opacity:1 } 50%,100%{ opacity:0 } }
+@keyframes seal-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(201,64,32,0); }
+  45%  { box-shadow: 0 0 0 8px rgba(201,64,32,0.16); }
+  100% { box-shadow: 0 0 0 14px rgba(201,64,32,0); }
+}
+
+/* Scanline drift — faint texture, barely there */
+.scanline-layer {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px, transparent 5px,
+    rgba(232,226,217,0.010) 5px, rgba(232,226,217,0.010) 6px
+  );
+}
+html.light .scanline-layer {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px, transparent 5px,
+    rgba(27,24,19,0.008) 5px, rgba(27,24,19,0.008) 6px
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT SHELL
+══════════════════════════════════════════════════════════ */
+#root {
+  display: flex; flex-direction: column; height: 100vh;
+  position: relative; z-index: 1;
+}
+.body-row { display: flex; flex: 1; min-height: 0; }
+
+/* ══════════════════════════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════════════════════════ */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 24px;
+  height: 48px;
+  border-bottom: 1px solid var(--line);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(12px);
+  flex: none;
+  transition: background 350ms ease, border-color 350ms ease;
+}
+.wordmark {
+  display: flex; align-items: center; gap: 0;
+  flex: none;
+}
+.wordmark-text {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.topbar-stat {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; letter-spacing: 0.09em; color: var(--ink-3);
+  white-space: nowrap;
+}
+.vdiv {
+  width: 1px; background: var(--line);
+  align-self: stretch; margin: 11px 0; flex: none;
+}
+.topbar-spacer { flex: 1; }
+
+/* Toggle buttons */
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 12px; color: var(--ink-3);
+  transition: all 180ms ease;
+  flex: none;
+  border-radius: 2px;
+}
+.icon-btn:hover { border-color: rgba(201,64,32,0.4); color: var(--ink); background: var(--surface-2); }
+.icon-btn.active { border-color: rgba(201,64,32,0.5); color: var(--seal); background: var(--seal-glow); }
+.icon-btn.theme-btn { font-size: 14px; }
+
+/* Ask button */
+.ask-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 12px; color: var(--ink-2);
+  transition: all 180ms ease; flex: none;
+}
+.ask-btn:hover { border-color: rgba(201,64,32,0.4); color: var(--ink); }
+.kbdchord {
+  font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4);
+  display: flex; gap: 2px;
+}
+.kbdchord span { padding: 1px 4px; border: 1px solid var(--ink-4); }
+
+/* ══════════════════════════════════════════════════════════
+   SIDE RAIL
+══════════════════════════════════════════════════════════ */
+.rail {
+  width: 210px; flex: none;
+  border-right: 1px solid var(--line);
+  padding: 22px 16px 16px;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  background: var(--rail-bg);
+  transition: background 350ms ease, border-color 350ms ease;
+}
+.rail-group { margin-bottom: 26px; }
+.rail-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 9px; letter-spacing: 0.14em; color: var(--ink-4);
+  text-transform: uppercase; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rail-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.rail-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 4px;
+  font-size: 13px; color: var(--ink-2);
+  transition: color 140ms ease;
+  cursor: pointer; border: none; background: none;
+  width: 100%; text-align: left;
+}
+.rail-item:hover { color: var(--ink); }
+.rail-item.active { color: var(--ink); }
+.rail-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: transparent; flex: none; transition: background 140ms ease;
+}
+.rail-item.active .rail-dot { background: var(--seal); }
+.rail-count {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; color: var(--ink-4); margin-left: auto;
+  transition: color 140ms ease;
+}
+.rail-item.active .rail-count { color: var(--ink-3); }
+.rail-item.inbox-item .rail-count { color: var(--seal); }
+
+.rail-spacer { flex: 1; }
+
+/* Tidy button */
+.tidy-btn {
+  padding: 14px 14px; background: var(--surface-2);
+  border: 1px solid var(--line) !important;
+  text-align: left; width: 100%; cursor: pointer;
+  transition: border-color 200ms ease, background 350ms ease;
+  position: relative; overflow: hidden; margin-bottom: 14px;
+}
+.tidy-btn:hover { border-color: rgba(201,64,32,0.3) !important; }
+.tidy-kanji {
+  position: absolute; right: 10px; bottom: 6px;
+  font-size: 42px; font-family: serif;
+  color: rgba(201,64,32,0.07);
+  line-height: 1; pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+/* Sys status */
+.sys-status {
+  padding-top: 12px; border-top: 1px solid var(--line);
+}
+.sys-row {
+  display: flex; align-items: center; gap: 6px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; color: var(--ink-4); line-height: 1.9;
+}
+.sys-led { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+.sys-led.ready  { background: #4a7c52; box-shadow: 0 0 4px rgba(74,124,82,0.5); }
+.sys-led.active { background: var(--seal); animation: dot-breathe 1.5s ease-in-out infinite; }
+
+/* ══════════════════════════════════════════════════════════
+   MAIN CONTENT AREA
+══════════════════════════════════════════════════════════ */
+.main {
+  flex: 1; min-width: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 48px 60px 96px;
+}
+
+/* ── Page header ── */
+.page-header {
+  display: flex; align-items: flex-end; gap: 40px;
+  margin-bottom: 40px;
+}
+.datestamp {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-4); margin-bottom: 16px;
+}
+.headline {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic; font-weight: 400;
+  font-size: 54px; line-height: 1.03;
+  letter-spacing: -0.02em; color: var(--ink);
+  max-width: 780px;
+}
+.headline .soft { color: var(--ink-3); }
+
+/* ── Ask bar ── */
+.ask-bar {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 16px 22px;
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 56px;
+  transition: border-color 250ms ease, background 250ms ease;
+}
+.ask-bar:focus-within {
+  border-color: rgba(201,64,32,0.3);
+  background: var(--surface-2);
+  background-image: repeating-linear-gradient(
+    0deg, transparent 0px, transparent 3px,
+    rgba(232,226,217,0.013) 3px, rgba(232,226,217,0.013) 4px
+  );
+}
+html.light .ask-bar:focus-within {
+  background-image: repeating-linear-gradient(
+    0deg, transparent 0px, transparent 3px,
+    rgba(27,24,19,0.013) 3px, rgba(27,24,19,0.013) 4px
+  );
+}
+.ask-prompt {
+  font-size: 15px; color: rgba(201,64,32,0.6);
+  font-family: 'Geist Mono', monospace; flex: none;
+  transition: color 200ms ease;
+}
+.ask-bar:focus-within .ask-prompt { color: var(--seal); }
+.ask-input {
+  flex: 1; font-size: 16px; color: var(--ink);
+  font-family: 'Geist', sans-serif;
+  background: none;
+}
+.ask-input::placeholder { color: var(--ink-4); font-style: italic; }
+.ask-bar:focus-within .ask-input { font-family: 'Geist Mono', monospace; font-size: 14px; }
+
+/* ── Section heads ── */
+.section-head {
+  display: flex; align-items: baseline; gap: 16px;
+  padding-bottom: 13px; border-bottom: 1px solid var(--line);
+  margin-bottom: 22px;
+}
+.section-num { font-family: 'Geist Mono', monospace; font-size: 10px; color: var(--ink-4); letter-spacing: 0.08em; min-width: 22px; }
+.section-title { font-family: 'Instrument Serif', serif; font-style: italic; font-size: 24px; font-weight: 400; color: var(--ink); line-height: 1.1; }
+.section-sub { font-size: 12px; color: var(--ink-3); }
+.section-right { margin-left: auto; }
+.section-link {
+  font-size: 12px; color: var(--ink-3); border-bottom: 1px solid transparent;
+  padding-bottom: 1px; transition: color 150ms ease, border-color 150ms ease;
+  cursor: pointer;
+}
+.section-link:hover { color: var(--ink); border-color: var(--line); }
+
+/* ── Inbox cards ── */
+.inbox-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0,1fr));
+  gap: 14px; margin-bottom: 64px;
+}
+.inbox-card {
+  padding: 14px; background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+.inbox-card:hover { border-color: rgba(201,64,32,0.22); background: var(--surface-2); }
+
+/* Kanji type ghost — hidden when no-kanji is active */
+.inbox-card::after {
+  position: absolute; bottom: 6px; right: 6px;
+  font-family: serif; font-size: 28px;
+  color: rgba(232,226,217,0.05); pointer-events: none;
+}
+html.light .inbox-card::after { color: rgba(27,24,19,0.05); }
+.inbox-card[data-ext="pdf"]::after   { content: '書'; }
+.inbox-card[data-ext="xlsx"]::after  { content: '算'; }
+.inbox-card[data-ext="jpg"]::after   { content: '画'; }
+.inbox-card[data-ext="mp3"]::after   { content: '音'; }
+.inbox-card[data-ext="md"]::after    { content: '文'; }
+.inbox-card[data-ext="zip"]::after   { content: '束'; }
+html.no-kanji .inbox-card::after { content: none; }
+html.no-kanji .tidy-kanji { opacity: 0; pointer-events: none; }
+html.no-kanji .disambig-kanji { opacity: 0; pointer-events: none; }
+html.no-kanji .footer-kanji { display: none; }
+html.no-kanji .coll-hanko { display: none; }
+
+.file-glyph {
+  width: 28px; height: 34px; background: var(--surface-2);
+  border: 1px solid var(--line);
+  position: relative; margin-bottom: 10px; flex: none;
+}
+.file-glyph::before {
+  content: ''; position: absolute; top: 0; right: 0;
+  width: 8px; height: 8px; background: var(--surface);
+  border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.file-ext {
+  position: absolute; bottom: 3px; left: 3px;
+  font-family: 'Geist Mono', monospace; font-size: 7px; letter-spacing: 0.06em; color: var(--ink-3);
+}
+.inbox-name {
+  font-size: 12px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px;
+}
+.conf-label { font-family: 'Geist Mono', monospace; font-size: 9px; letter-spacing: 0.06em; color: var(--ink-4); margin-bottom: 5px; }
+.conf-track { height: 2px; background: var(--line); position: relative; margin-bottom: 8px; }
+.conf-fill { position: absolute; left: 0; top: 0; height: 100%; transition: width 600ms cubic-bezier(.22,.61,.36,1); }
+.conf-fill.high { background: var(--seal); }
+.conf-fill.mid  { background: var(--seal-soft); opacity: 0.75; }
+.conf-fill.low  { background: var(--ink-4); }
+.inbox-guess {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic; font-size: 13px; color: var(--ink-2); line-height: 1.2;
+}
+.inbox-actions {
+  margin-top: 10px; display: flex; gap: 10px;
+  opacity: 0; transform: translateY(4px);
+  transition: all 160ms ease;
+}
+.inbox-card:hover .inbox-actions { opacity: 1; transform: none; }
+.accept-btn {
+  font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.06em;
+  color: var(--seal); border-bottom: 1px solid rgba(201,64,32,0.3); padding-bottom: 1px;
+}
+.change-btn {
+  font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3);
+}
+
+/* ── Collections grid ── */
+.coll-grid {
+  display: grid; grid-template-columns: 1.4fr 1fr;
+  gap: 18px; margin-bottom: 72px;
+}
+.coll-card {
+  padding: 30px 30px 26px; border: 1px solid var(--line);
+  position: relative; overflow: hidden;
+  cursor: pointer; text-align: left; min-height: 190px;
+  transition: transform 220ms ease, border-color 220ms ease;
+  background: var(--surface);
+}
+.coll-card.indigo { background: var(--kachi); border-color: var(--kachi-line); }
+.coll-card.sm { min-height: 155px; padding: 22px 22px 18px; }
+.coll-card:hover { transform: translateY(-2px); }
+.coll-card:not(.indigo):hover { border-color: rgba(201,64,32,0.2); }
+.coll-card.indigo:hover { border-color: var(--kachi-soft); }
+.circuit-svg { position: absolute; inset: 0; opacity: 0.2; pointer-events: none; }
+.coll-meta {
+  font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.10em;
+  color: var(--ink-4); margin-bottom: 24px; position: relative;
+}
+.coll-card.indigo .coll-meta { color: rgba(232,226,217,0.3); }
+.coll-title {
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 32px; font-weight: 400; line-height: 1.05;
+  letter-spacing: -0.015em; color: var(--ink);
+  margin-bottom: 8px; position: relative;
+}
+.coll-card.sm .coll-title { font-size: 24px; }
+.coll-sub { font-size: 12px; color: var(--ink-3); line-height: 1.5; position: relative; }
+.coll-card.indigo .coll-sub { color: rgba(232,226,217,0.4); }
+.coll-hanko {
+  position: absolute; top: 16px; right: 16px;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid rgba(201,64,32,0.4);
+  display: flex; align-items: center; justify-content: center;
+  font-family: serif; font-size: 9px; color: var(--seal);
+}
+.coll-corner {
+  position: absolute; bottom: 16px; right: 16px;
+  font-family: 'Geist Mono', monospace; font-size: 10px;
+  color: var(--ink-4); opacity: 0; transition: opacity 180ms ease;
+  display: flex; align-items: center; gap: 5px;
+}
+.coll-card:hover .coll-corner { opacity: 1; }
+.coll-card.indigo .coll-corner { color: rgba(232,226,217,0.35); }
+
+/* ── Recent list ── */
+.recent-list { margin-bottom: 72px; }
+.recent-row {
+  display: grid; grid-template-columns: 36px 1fr 200px 70px 82px;
+  align-items: center; gap: 20px; padding: 12px 4px;
+  border-bottom: 1px solid var(--line-2);
+  cursor: pointer; transition: background 130ms ease;
+}
+.recent-row:hover { background: rgba(232,226,217,0.025); }
+html.light .recent-row:hover { background: rgba(27,24,19,0.025); }
+.ext-tag { font-family: 'Geist Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: var(--ink-4); text-transform: uppercase; }
+.recent-name { font-size: 13px; color: var(--ink); }
+.recent-coll { font-family: 'Instrument Serif', serif; font-style: italic; font-size: 13px; color: var(--ink-3); }
+.recent-meta { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-4); text-align: right; }
+
+/* ── File list (shelf view) ── */
+.file-list { margin-bottom: 72px; }
+.file-row {
+  display: grid; grid-template-columns: 36px 1fr 140px 70px 80px 80px;
+  align-items: center; gap: 18px; padding: 11px 4px;
+  border-bottom: 1px solid var(--line-2);
+  cursor: pointer; transition: background 130ms ease;
+}
+.file-row:hover { background: rgba(232,226,217,0.025); }
+html.light .file-row:hover { background: rgba(27,24,19,0.025); }
+.file-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Geist Mono', monospace; font-size: 8px; letter-spacing: 0.06em;
+  color: var(--ink-4); background: var(--surface-2);
+  border: 1px solid var(--line); padding: 2px 5px;
+  text-transform: uppercase;
+}
+.row-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-folder { font-family: 'Instrument Serif', serif; font-style: italic; font-size: 13px; color: var(--ink-3); }
+.row-meta { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-4); text-align: right; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 80px 40px;
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 24px; color: var(--ink-3);
+}
+
+/* ── Footer ── */
+.footer {
+  display: flex; align-items: center; gap: 20px;
+  padding-top: 28px; margin-top: 60px;
+  border-top: 1px solid var(--line);
+}
+.footer-phrase {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic; font-size: 14px; color: var(--ink-3);
+}
+.footer-kanji { color: var(--seal); font-style: normal; font-family: serif; font-size: 15px; }
+.footer-meta { margin-left: auto; font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.08em; color: var(--ink-4); }
+
+/* ── Tidy confirmation ── */
+.tidy-done {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px; border: 1px solid rgba(201,64,32,0.2);
+  background: rgba(201,64,32,0.04); margin-bottom: 52px;
+  animation: fade-in 300ms ease;
+}
+.tidy-done-text { font-family: 'Instrument Serif', serif; font-style: italic; font-size: 18px; color: var(--ink); }
+.tidy-done-sub { font-family: 'Geist Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: var(--ink-4); margin-top: 2px; }
+
+/* ══════════════════════════════════════════════════════════
+   DISAMBIGUATION OVERLAY
+══════════════════════════════════════════════════════════ */
+.disambig-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--overlay-bg);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(10px);
+  animation: fade-in 220ms ease;
+}
+.disambig-card {
+  width: 620px; background: var(--surface);
+  border: 1px solid var(--line); padding: 36px;
+  position: relative; overflow: hidden;
+}
+.disambig-kanji {
+  position: absolute; right: 18px; top: 10px;
+  font-size: 72px; font-family: serif;
+  color: rgba(232,226,217,0.03); pointer-events: none;
+  transition: opacity 300ms ease;
+}
+html.light .disambig-kanji { color: rgba(27,24,19,0.04); }
+.disambig-eyebrow {
+  font-family: 'Geist Mono', monospace; font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--seal); margin-bottom: 8px;
+}
+.disambig-filename {
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 26px; color: var(--ink); line-height: 1.1; margin-bottom: 26px;
+}
+.disambig-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+.disambig-choice {
+  padding: 18px; background: var(--surface-2);
+  border: 1px solid var(--line); cursor: pointer; text-align: left;
+  transition: all 160ms ease; position: relative; overflow: hidden;
+}
+.disambig-choice:hover,
+.disambig-choice.selected { border-color: rgba(201,64,32,0.4); background: rgba(201,64,32,0.05); }
+.choice-conf { height: 2px; background: var(--line); margin-bottom: 12px; position: relative; }
+.choice-conf-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--seal); }
+.choice-folder {
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 18px; color: var(--ink); margin-bottom: 8px; line-height: 1.1;
+}
+.choice-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.choice-chip {
+  font-family: 'Geist Mono', monospace; font-size: 9px; letter-spacing: 0.06em;
+  color: var(--ink-3); padding: 2px 6px; border: 1px solid var(--line);
+}
+.choice-chip.hl { color: var(--seal); border-color: rgba(201,64,32,0.3); }
+.disambig-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.confirm-btn {
+  padding: 8px 18px; font-size: 12px; letter-spacing: 0.04em;
+  background: var(--seal); color: var(--ink);
+  font-family: 'Geist Mono', monospace; transition: background 160ms ease;
+}
+.confirm-btn:hover { background: var(--seal-soft); }
+.skip-link {
+  padding: 8px 12px; font-size: 12px; letter-spacing: 0.04em;
+  color: var(--ink-3); font-family: 'Geist Mono', monospace;
+  border: 1px solid var(--line);
+}
+
+</style>
+</head>
+<body>
+<div class="scanline-layer"></div>
+<div id="root">
+
+  <!-- ══ TOP BAR ══════════════════════════════════════════ -->
+  <div class="topbar">
+    <div class="wordmark">
+      <span class="wordmark-text">organize</span>
+    </div>
+    <div class="vdiv"></div>
+    <span class="topbar-stat">library · 718 files · 6 collections</span>
+    <div class="topbar-spacer"></div>
+
+    <!-- Kanji toggle -->
+    <button class="icon-btn" id="kanjiToggle" title="Toggle kanji characters">漢</button>
+    <!-- Light / dark toggle -->
+    <button class="icon-btn theme-btn" id="themeToggle" title="Toggle light / dark">☾</button>
+
+    <div class="vdiv"></div>
+    <button class="ask-btn" id="askTrigger">
+      <span class="serif-i" style="font-size:13px">ask</span>
+      <div class="kbdchord"><span>⌘</span><span>K</span></div>
+    </button>
+    <div class="vdiv"></div>
+    <span class="topbar-stat" style="color:var(--ink-4)">v 1.0 · 2026</span>
+  </div>
+
+  <div class="body-row">
+
+    <!-- ══ SIDE RAIL ═════════════════════════════════════ -->
+    <nav class="rail">
+      <div class="rail-group">
+        <div class="rail-label">spaces</div>
+        <button class="rail-item active" data-view="everything">
+          <div class="rail-dot"></div><span>everything</span><span class="rail-count">718</span>
+        </button>
+        <button class="rail-item" data-view="work">
+          <div class="rail-dot"></div><span>work</span><span class="rail-count">312</span>
+        </button>
+        <button class="rail-item" data-view="personal">
+          <div class="rail-dot"></div><span>personal</span><span class="rail-count">287</span>
+        </button>
+        <button class="rail-item" data-view="archive">
+          <div class="rail-dot"></div><span>archive</span><span class="rail-count">119</span>
+        </button>
+      </div>
+
+      <div class="rail-group">
+        <div class="rail-label">shelves</div>
+        <button class="rail-item" data-view="documents"><div class="rail-dot"></div><span>documents</span><span class="rail-count">203</span></button>
+        <button class="rail-item" data-view="images"><div class="rail-dot"></div><span>images</span><span class="rail-count">89</span></button>
+        <button class="rail-item" data-view="audio"><div class="rail-dot"></div><span>audio &amp; voice</span><span class="rail-count">47</span></button>
+        <button class="rail-item" data-view="code"><div class="rail-dot"></div><span>code</span><span class="rail-count">31</span></button>
+        <button class="rail-item" data-view="web"><div class="rail-dot"></div><span>web</span><span class="rail-count">58</span></button>
+      </div>
+
+      <div class="rail-group">
+        <div class="rail-label">inbox</div>
+        <button class="rail-item inbox-item" data-view="inbox">
+          <div class="rail-dot"></div><span>awaiting placement</span><span class="rail-count" id="inboxCount">6</span>
+        </button>
+      </div>
+
+      <div class="rail-spacer"></div>
+
+      <button class="tidy-btn" id="tidyBtn">
+        <div class="tidy-kanji">整</div>
+        <div class="serif-i" style="font-size:16px;color:var(--ink);margin-bottom:3px" id="tidyTitle">a quiet tidy</div>
+        <div class="mono-l quiet" style="font-size:10px;letter-spacing:0.05em" id="tidySub">place inbox · suggest archives</div>
+      </button>
+
+      <div class="sys-status">
+        <div class="sys-row"><div class="sys-led ready"></div><span>model ready · 1.9gb</span></div>
+        <div class="sys-row"><div class="sys-led active"></div><span>learner · idle</span></div>
+      </div>
+    </nav>
+
+    <!-- ══ MAIN CONTENT ══════════════════════════════════ -->
+    <main class="main" id="main"></main>
+
+  </div>
+</div>
+
+<!-- ══ DISAMBIGUATION OVERLAY ═════════════════════════════ -->
+<div class="disambig-overlay" id="disambigOverlay" style="display:none">
+  <div class="disambig-card">
+    <div class="disambig-kanji">択</div>
+    <div class="disambig-eyebrow">AI uncertain · choose a home</div>
+    <div class="disambig-filename">client_brief_tokyo.pdf</div>
+    <div class="disambig-choices">
+      <div class="disambig-choice selected">
+        <div class="choice-conf"><div class="choice-conf-fill" style="width:64%"></div></div>
+        <div class="choice-folder">Work / Projects</div>
+        <div class="choice-chips">
+          <span class="choice-chip hl">client</span><span class="choice-chip hl">brief</span>
+          <span class="choice-chip">proposal</span><span class="choice-chip">tokyo</span>
+        </div>
+      </div>
+      <div class="disambig-choice">
+        <div class="choice-conf"><div class="choice-conf-fill" style="width:51%"></div></div>
+        <div class="choice-folder">Archive / Reference</div>
+        <div class="choice-chips">
+          <span class="choice-chip hl">brief</span><span class="choice-chip">design</span>
+          <span class="choice-chip">reference</span>
+        </div>
+      </div>
+    </div>
+    <div class="disambig-actions">
+      <button class="skip-link" id="disambigSkip">skip</button>
+      <button class="confirm-btn" id="disambigConfirm">confirm placement</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════
+   DATA
+════════════════════════════════════════════════════════ */
+let inboxItems = [
+  { id:1, name:'invoice_march.pdf',   ext:'pdf',  conf:97, guess:'Finance / 2026',    cls:'high' },
+  { id:2, name:'budget_q2.xlsx',      ext:'xlsx', conf:91, guess:'Work / Reports',    cls:'high' },
+  { id:3, name:'IMG_4829.jpg',        ext:'jpg',  conf:74, guess:'Personal / Photos', cls:'mid'  },
+  { id:4, name:'untitled_memo.mp3',   ext:'mp3',  conf:58, guess:'Voice / Notes',     cls:'mid'  },
+  { id:5, name:'a piece of writing.md', ext:'md', conf:88, guess:'Writing / Essays',  cls:'high' },
+  { id:6, name:'kawai_assets.zip',    ext:'zip',  conf:62, guess:'Design / Assets',   cls:'mid'  },
+];
+let tidied = false;
+let currentView = 'everything';
+
+const RECENT = [
+  { ext:'pdf',  name:'Q1 Review Final.pdf',       coll:'Work & Projects',  size:'2.4 mb', when:'just now'   },
+  { ext:'md',   name:'thoughts on attention.md',  coll:'Writing',          size:'14 kb',  when:'2h ago'     },
+  { ext:'xlsx', name:'expense_tracker.xlsx',       coll:'Finance / 2026',  size:'88 kb',  when:'yesterday'  },
+  { ext:'jpg',  name:'kyoto_shrine_01.jpg',        coll:'Personal',         size:'4.1 mb', when:'3 days ago' },
+  { ext:'mp3',  name:'voice_memo_apr28.mp3',       coll:'Writing',          size:'6.2 mb', when:'4 days ago' },
+];
+
+const WORK_FILES = [
+  { ext:'pdf',  name:'Q1 Review Final.pdf',        folder:'Work / Projects',  size:'2.4 mb', when:'just now'   },
+  { ext:'xlsx', name:'budget_q2.xlsx',             folder:'Work / Reports',   size:'88 kb',  when:'2h ago'     },
+  { ext:'pdf',  name:'client_brief_tokyo.pdf',     folder:'Work / Projects',  size:'1.1 mb', when:'yesterday'  },
+  { ext:'docx', name:'contract_renewal.docx',      folder:'Work / Legal',     size:'340 kb', when:'2 days ago' },
+  { ext:'pptx', name:'Q4_deck_final.pptx',         folder:'Work / Projects',  size:'8.2 mb', when:'3 days ago' },
+  { ext:'pdf',  name:'supplier_agreement.pdf',     folder:'Work / Legal',     size:'2.1 mb', when:'5 days ago' },
+  { ext:'xlsx', name:'project_timeline.xlsx',      folder:'Work / Projects',  size:'120 kb', when:'1 week ago' },
+  { ext:'pdf',  name:'invoice_march.pdf',          folder:'Work / Finance',   size:'180 kb', when:'1 week ago' },
+];
+
+const PERSONAL_FILES = [
+  { ext:'jpg',  name:'kyoto_shrine_01.jpg',        folder:'Personal / Photos',  size:'4.1 mb', when:'3 days ago' },
+  { ext:'jpg',  name:'family_dinner_2026.jpg',     folder:'Personal / Photos',  size:'3.8 mb', when:'1 week ago' },
+  { ext:'pdf',  name:'lease_agreement_2026.pdf',   folder:'Personal / Docs',    size:'1.2 mb', when:'2 weeks ago'},
+  { ext:'mp3',  name:'voice_memo_apr28.mp3',       folder:'Personal / Notes',   size:'6.2 mb', when:'4 days ago' },
+  { ext:'md',   name:'journal_entry_may.md',       folder:'Personal / Writing', size:'8 kb',   when:'yesterday'  },
+  { ext:'pdf',  name:'passport_scan.pdf',          folder:'Personal / Docs',    size:'420 kb', when:'3 weeks ago'},
+];
+
+const ARCHIVE_FILES = [
+  { ext:'pdf',  name:'2025_tax_return.pdf',        folder:'Archive / Finance',  size:'2.8 mb', when:'Jan 2026'   },
+  { ext:'pdf',  name:'old_contract_2024.pdf',      folder:'Archive / Legal',    size:'1.4 mb', when:'Dec 2025'   },
+  { ext:'xlsx', name:'budget_2025_final.xlsx',     folder:'Archive / Finance',  size:'210 kb', when:'Dec 2025'   },
+  { ext:'pptx', name:'pitch_deck_v1.pptx',         folder:'Archive / Projects', size:'14 mb',  when:'Nov 2025'   },
+  { ext:'docx', name:'old_proposal.docx',          folder:'Archive / Projects', size:'680 kb', when:'Oct 2025'   },
+  { ext:'zip',  name:'design_assets_2024.zip',     folder:'Archive / Design',   size:'240 mb', when:'Sep 2025'   },
+  { ext:'pdf',  name:'health_records.pdf',         folder:'Archive / Personal', size:'3.1 mb', when:'Aug 2025'   },
+  { ext:'mp3',  name:'podcast_recording.mp3',      folder:'Archive / Media',    size:'48 mb',  when:'Jul 2025'   },
+];
+
+const DOCUMENTS = [
+  { ext:'pdf',  name:'Q1 Review Final.pdf',        folder:'Work / Projects',  size:'2.4 mb', when:'just now'   },
+  { ext:'docx', name:'contract_renewal.docx',      folder:'Work / Legal',     size:'340 kb', when:'2 days ago' },
+  { ext:'pdf',  name:'invoice_march.pdf',          folder:'Finance / 2026',   size:'180 kb', when:'1 week ago' },
+  { ext:'pdf',  name:'client_brief_tokyo.pdf',     folder:'Work / Projects',  size:'1.1 mb', when:'yesterday'  },
+  { ext:'md',   name:'thoughts on attention.md',   folder:'Writing',          size:'14 kb',  when:'2h ago'     },
+  { ext:'pdf',  name:'passport_scan.pdf',          folder:'Personal / Docs',  size:'420 kb', when:'3 weeks ago'},
+  { ext:'docx', name:'meeting_notes_may.docx',     folder:'Work / Projects',  size:'68 kb',  when:'yesterday'  },
+  { ext:'md',   name:'journal_entry_may.md',       folder:'Personal',         size:'8 kb',   when:'yesterday'  },
+  { ext:'pdf',  name:'2025_tax_return.pdf',        folder:'Archive',          size:'2.8 mb', when:'Jan 2026'   },
+];
+
+const IMAGES = [
+  { ext:'jpg',  name:'kyoto_shrine_01.jpg',        folder:'Personal / Photos',  size:'4.1 mb', when:'3 days ago' },
+  { ext:'jpg',  name:'IMG_4829.jpg',               folder:'Personal / Photos',  size:'3.2 mb', when:'5 days ago' },
+  { ext:'jpg',  name:'family_dinner_2026.jpg',     folder:'Personal / Photos',  size:'3.8 mb', when:'1 week ago' },
+  { ext:'png',  name:'ui_mockup_v3.png',           folder:'Work / Design',      size:'1.4 mb', when:'2 days ago' },
+  { ext:'jpg',  name:'product_photo_01.jpg',       folder:'Work / Projects',    size:'8.2 mb', when:'4 days ago' },
+  { ext:'png',  name:'screenshot_2026.png',        folder:'Personal',           size:'540 kb', when:'yesterday'  },
+  { ext:'jpg',  name:'receipt_scan.jpg',           folder:'Finance / 2026',     size:'280 kb', when:'1 week ago' },
+];
+
+const AUDIO = [
+  { ext:'mp3',  name:'untitled_memo.mp3',          folder:'Voice / Notes',    size:'2.1 mb', when:'today'      },
+  { ext:'mp3',  name:'voice_memo_apr28.mp3',       folder:'Writing',          size:'6.2 mb', when:'4 days ago' },
+  { ext:'m4a',  name:'meeting_recording.m4a',      folder:'Work / Projects',  size:'42 mb',  when:'2 days ago' },
+  { ext:'mp3',  name:'ideas_for_essay.mp3',        folder:'Writing',          size:'3.8 mb', when:'1 week ago' },
+  { ext:'wav',  name:'podcast_intro.wav',          folder:'Archive / Media',  size:'18 mb',  when:'2 weeks ago'},
+];
+
+const CODE = [
+  { ext:'js',   name:'renderer.js',                folder:'Projects / App',   size:'48 kb',  when:'2 days ago' },
+  { ext:'py',   name:'file_classifier.py',         folder:'Projects / AI',    size:'12 kb',  when:'3 days ago' },
+  { ext:'ts',   name:'LlamaService.ts',            folder:'Projects / App',   size:'8 kb',   when:'5 days ago' },
+  { ext:'sh',   name:'build.sh',                   folder:'Projects / App',   size:'2 kb',   when:'1 week ago' },
+  { ext:'json', name:'package.json',               folder:'Projects / App',   size:'4 kb',   when:'1 week ago' },
+  { ext:'yml',  name:'build.yml',                  folder:'Projects / CI',    size:'3 kb',   when:'2 weeks ago'},
+];
+
+const WEB = [
+  { ext:'url',  name:'Anthropic Claude API',       folder:'Research / AI',    size:'—',      when:'yesterday'  },
+  { ext:'url',  name:'electron-builder docs',      folder:'Projects / App',   size:'—',      when:'3 days ago' },
+  { ext:'url',  name:'node-llama-cpp releases',    folder:'Projects / AI',    size:'—',      when:'4 days ago' },
+  { ext:'url',  name:'Japan National Archives',    folder:'Research',         size:'—',      when:'1 week ago' },
+  { ext:'url',  name:'Stripe pricing docs',        folder:'Projects / App',   size:'—',      when:'2 weeks ago'},
+  { ext:'html', name:'design_reference.html',      folder:'Work / Design',    size:'120 kb', when:'3 days ago' },
+  { ext:'url',  name:'GitHub Actions runners',     folder:'Projects / CI',    size:'—',      when:'2 weeks ago'},
+];
+
+const COLLECTIONS = [
+  { id:'work',    title:'Work & Projects', sub:'Contracts, reports, client files and everything the week demands.',  count:247, updated:'2 days ago',  hue:'default', pinned:true },
+  { id:'finance', title:'Finance / 2026',  sub:'Invoices, receipts, tax documents. Everything that moves money.',   count:118, updated:'today',       hue:'indigo',  pinned:false},
+  { id:'writing', title:'Writing',         sub:'Essays, notes, drafts in progress.',                                 count:89,  updated:'5 days ago',  hue:'default', pinned:false},
+  { id:'personal',title:'Personal',        sub:'Photos, letters, memories kept.',                                    count:203, updated:'1 day ago',   hue:'default', pinned:false},
+];
+
+/* ════════════════════════════════════════════════════════
+   HTML BUILDERS
+════════════════════════════════════════════════════════ */
+function inboxCardHTML(f) {
+  return `
+  <div class="inbox-card" data-ext="${f.ext}" data-id="${f.id}">
+    <div class="file-glyph"><span class="file-ext">${f.ext}</span></div>
+    <div class="inbox-name">${f.name}</div>
+    <div class="conf-label">confidence · ${f.conf}</div>
+    <div class="conf-track"><div class="conf-fill ${f.cls}" style="width:${f.conf}%"></div></div>
+    <div class="inbox-guess">→ ${f.guess}</div>
+    <div class="inbox-actions">
+      <button class="accept-btn" data-id="${f.id}">accept</button>
+      <button class="change-btn">change</button>
+    </div>
+  </div>`;
+}
+
+function collCardHTML(c, large) {
+  const isIndigo = c.hue === 'indigo';
+  return `
+  <div class="coll-card${isIndigo ? ' indigo' : ''}${!large ? ' sm' : ''}" data-coll="${c.id}">
+    <svg class="circuit-svg" xmlns="http://www.w3.org/2000/svg">
+      <defs><pattern id="ckt-${c.id}" x="0" y="0" width="56" height="56" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="14" x2="56" y2="14" stroke="rgba(232,226,217,0.22)" stroke-width="0.6"/>
+        <line x1="0" y1="42" x2="56" y2="42" stroke="rgba(232,226,217,0.13)" stroke-width="0.6"/>
+        <line x1="18" y1="0" x2="18" y2="56" stroke="rgba(232,226,217,0.18)" stroke-width="0.6"/>
+        <line x1="46" y1="0" x2="46" y2="56" stroke="rgba(232,226,217,0.11)" stroke-width="0.6"/>
+        <polyline points="18,14 18,28 46,28" fill="none" stroke="rgba(232,226,217,0.14)" stroke-width="0.6"/>
+        <circle cx="18" cy="14" r="2" fill="rgba(232,226,217,0.22)"/>
+        <circle cx="46" cy="42" r="2" fill="rgba(232,226,217,0.18)"/>
+        <circle cx="46" cy="28" r="1.5" fill="rgba(201,64,32,0.4)"/>
+      </pattern></defs>
+      <rect width="100%" height="100%" fill="url(#ckt-${c.id})"/>
+    </svg>
+    ${c.pinned ? '<div class="coll-hanko">〇</div>' : ''}
+    <div class="coll-meta">${String(c.count).padStart(3,'0')} files · updated ${c.updated}</div>
+    <div class="coll-title">${c.title}</div>
+    <div class="coll-sub">${c.sub}</div>
+    <div class="coll-corner">open <span style="color:var(--seal)">→</span></div>
+  </div>`;
+}
+
+function recentRowHTML(f) {
+  return `<div class="recent-row">
+    <span class="ext-tag">${f.ext}</span>
+    <span class="recent-name">${f.name}</span>
+    <span class="recent-coll">${f.coll}</span>
+    <span class="recent-meta">${f.size}</span>
+    <span class="recent-meta">${f.when}</span>
+  </div>`;
+}
+
+function fileRowHTML(f) {
+  return `<div class="file-row">
+    <span class="file-badge">${f.ext}</span>
+    <span class="row-name">${f.name}</span>
+    <span class="row-folder">${f.folder}</span>
+    <span class="row-meta">${f.size}</span>
+    <span class="row-meta">${f.when}</span>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════
+   VIEW RENDERERS
+════════════════════════════════════════════════════════ */
+function renderEverything() {
+  const inbox = inboxItems;
+  const tidySection = tidied
+    ? `<div class="tidy-done">
+        <div>
+          <div class="tidy-done-text">tidied. ${inboxItems.length === 0 ? 'all files placed.' : ''}</div>
+          <div class="tidy-done-sub">suggestions archived · model updated</div>
+        </div>
+       </div>`
+    : (inbox.length > 0 ? `
+        <div style="margin-bottom:64px">
+          <div class="section-head">
+            <span class="section-num">01</span>
+            <span class="section-title">inbox</span>
+            <span class="section-sub" id="inboxSubLabel">${inbox.length} awaiting placement</span>
+            <div class="section-right">
+              <button class="section-link" id="placeAllBtn">place all where suggested</button>
+            </div>
+          </div>
+          <div class="inbox-grid" id="inboxGrid">${inbox.map(inboxCardHTML).join('')}</div>
+        </div>` : '');
+
+  return `
+    <div class="page-header">
+      <div style="flex:1">
+        <div class="datestamp">wednesday · may 9, 2026</div>
+        <h1 class="headline">
+          ${inbox.length > 0
+            ? `${inbox.length} files arrived<br>since monday.<span class="soft"> shall I tidy?</span>`
+            : `everything<br>in its place.<span class="soft"> well done.</span>`}
+        </h1>
+      </div>
+      ${inbox.length > 0 ? `
+      <div style="display:flex;gap:10px;padding-bottom:6px">
+        <button id="tidyNowBtn" style="padding:9px 20px;font-size:13px;background:var(--seal);color:var(--ink);letter-spacing:0.02em;transition:background 160ms ease" onmouseover="this.style.background='var(--seal-soft)'" onmouseout="this.style.background='var(--seal)'">tidy now</button>
+        <button style="padding:9px 18px;font-size:13px;border:1px solid var(--line);color:var(--ink-2);letter-spacing:0.02em">review later</button>
+      </div>` : ''}
+    </div>
+
+    <div class="ask-bar">
+      <span class="ask-prompt">›</span>
+      <input class="ask-input" placeholder="what did i write about attention this winter?"/>
+      <span class="mono quiet" style="font-size:11px;letter-spacing:0.05em">or drop a file</span>
+      <div class="kbdchord"><span>⌘</span><span>K</span></div>
+    </div>
+
+    ${tidySection}
+
+    <div style="margin-bottom:72px">
+      <div class="section-head">
+        <span class="section-num">${inbox.length > 0 && !tidied ? '02' : '01'}</span>
+        <span class="section-title">collections</span>
+        <span class="section-sub">4 · sorted as you keep them</span>
+      </div>
+      <div class="coll-grid">
+        ${COLLECTIONS.map((c, i) => collCardHTML(c, i < 2)).join('')}
+      </div>
+    </div>
+
+    <div class="recent-list">
+      <div class="section-head">
+        <span class="section-num">${inbox.length > 0 && !tidied ? '03' : '02'}</span>
+        <span class="section-title">recent</span>
+        <span class="section-sub">last things you touched</span>
+      </div>
+      ${RECENT.map(recentRowHTML).join('')}
+    </div>
+
+    <div class="footer">
+      <div class="footer-phrase"><span class="footer-kanji">整 </span>everything in its place.</div>
+      <div class="footer-meta">last reviewed · 14 minutes ago</div>
+    </div>`;
+}
+
+function renderSpace(title, count, files, headline) {
+  return `
+    <div class="page-header" style="margin-bottom:36px">
+      <div>
+        <div class="datestamp">${title} · ${count} files</div>
+        <h1 class="headline">${headline}</h1>
+      </div>
+    </div>
+    <div class="ask-bar">
+      <span class="ask-prompt">›</span>
+      <input class="ask-input" placeholder="search ${title} files…"/>
+      <span class="mono quiet" style="font-size:11px;letter-spacing:0.05em">or drop a file</span>
+    </div>
+    <div class="file-list">
+      <div class="section-head">
+        <span class="section-num">01</span>
+        <span class="section-title">${title}</span>
+        <span class="section-sub">${count} files</span>
+        <div class="section-right"><span class="section-link">sort by date</span></div>
+      </div>
+      ${files.map(fileRowHTML).join('')}
+    </div>
+    <div class="footer">
+      <div class="footer-phrase"><span class="footer-kanji">整 </span>everything in its place.</div>
+      <div class="footer-meta">${count} files · ${title}</div>
+    </div>`;
+}
+
+function renderInbox() {
+  const items = inboxItems;
+  if (items.length === 0) {
+    return `
+      <div class="page-header" style="margin-bottom:36px">
+        <div>
+          <div class="datestamp">inbox · awaiting placement</div>
+          <h1 class="headline">inbox is clear.<span class="soft"> nothing waiting.</span></h1>
+        </div>
+      </div>
+      <div class="empty-state">no files awaiting placement.</div>
+      <div class="footer">
+        <div class="footer-phrase"><span class="footer-kanji">整 </span>everything in its place.</div>
+        <div class="footer-meta">0 files pending</div>
+      </div>`;
+  }
+  return `
+    <div class="page-header" style="margin-bottom:36px">
+      <div style="flex:1">
+        <div class="datestamp">inbox · awaiting placement</div>
+        <h1 class="headline">${items.length} files waiting<br><span class="soft">for a home.</span></h1>
+      </div>
+      <div style="display:flex;gap:10px;padding-bottom:6px">
+        <button id="placeAllBtn2" style="padding:9px 20px;font-size:13px;background:var(--seal);color:var(--ink);letter-spacing:0.02em;transition:background 160ms ease" onmouseover="this.style.background='var(--seal-soft)'" onmouseout="this.style.background='var(--seal)'">place all</button>
+      </div>
+    </div>
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <span class="section-title">awaiting placement</span>
+      <span class="section-sub">${items.length} files</span>
+    </div>
+    <div class="inbox-grid" id="inboxGrid" style="margin-bottom:64px">
+      ${items.map(inboxCardHTML).join('')}
+    </div>
+    <div class="footer">
+      <div class="footer-phrase"><span class="footer-kanji">整 </span>everything in its place.</div>
+      <div class="footer-meta">${items.length} files pending placement</div>
+    </div>`;
+}
+
+function renderShelf(title, files, desc) {
+  return `
+    <div class="page-header" style="margin-bottom:36px">
+      <div>
+        <div class="datestamp">shelves · ${title}</div>
+        <h1 class="headline">${desc}</h1>
+      </div>
+    </div>
+    <div class="ask-bar">
+      <span class="ask-prompt">›</span>
+      <input class="ask-input" placeholder="search ${title.toLowerCase()}…"/>
+      <span class="mono quiet" style="font-size:11px;letter-spacing:0.05em">or drop a file</span>
+    </div>
+    <div class="file-list">
+      <div class="section-head">
+        <span class="section-num">01</span>
+        <span class="section-title">${title}</span>
+        <span class="section-sub">${files.length} files</span>
+        <div class="section-right"><span class="section-link">sort by name</span></div>
+      </div>
+      ${files.map(fileRowHTML).join('')}
+    </div>
+    <div class="footer">
+      <div class="footer-phrase"><span class="footer-kanji">整 </span>everything in its place.</div>
+      <div class="footer-meta">${files.length} files · ${title.toLowerCase()}</div>
+    </div>`;
+}
+
+const VIEWS = {
+  everything: renderEverything,
+  work:       () => renderSpace('work', 312, WORK_FILES, '312 files.<br><span class="soft">your workspace.</span>'),
+  personal:   () => renderSpace('personal', 287, PERSONAL_FILES, '287 personal<br><span class="soft">files, kept close.</span>'),
+  archive:    () => renderSpace('archive', 119, ARCHIVE_FILES, '119 files<br><span class="soft">at rest.</span>'),
+  inbox:      renderInbox,
+  documents:  () => renderShelf('Documents', DOCUMENTS, `${DOCUMENTS.length} documents.<br><span class="soft">all your written work.</span>`),
+  images:     () => renderShelf('Images', IMAGES, `${IMAGES.length} images.<span class="soft"><br>stills and screenshots.</span>`),
+  audio:      () => renderShelf('Audio & Voice', AUDIO, `${AUDIO.length} audio files.<br><span class="soft">recordings and memos.</span>`),
+  code:       () => renderShelf('Code', CODE, `${CODE.length} code files.<br><span class="soft">scripts and configs.</span>`),
+  web:        () => renderShelf('Web', WEB, `${WEB.length} web links<br><span class="soft">and saved pages.</span>`),
+};
+
+/* ════════════════════════════════════════════════════════
+   VIEW SWITCHING
+════════════════════════════════════════════════════════ */
+function setView(viewId) {
+  currentView = viewId;
+  const main = document.getElementById('main');
+  main.style.opacity = '0';
+  main.style.transform = 'translateY(6px)';
+  setTimeout(() => {
+    main.innerHTML = VIEWS[viewId] ? VIEWS[viewId]() : '';
+    main.style.transition = 'none';
+    main.style.opacity = '0';
+    main.style.transform = 'translateY(6px)';
+    requestAnimationFrame(() => {
+      main.style.transition = 'opacity 260ms ease, transform 260ms ease';
+      main.style.opacity = '1';
+      main.style.transform = 'none';
+    });
+    bindViewEvents();
+    main.scrollTop = 0;
+  }, 120);
+
+  // Update rail
+  document.querySelectorAll('.rail-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === viewId);
+  });
+}
+
+function bindViewEvents() {
+  // Accept buttons
+  document.querySelectorAll('.accept-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id);
+      placeFile(id);
+    });
+  });
+
+  // Place all
+  const placeAll = document.getElementById('placeAllBtn') || document.getElementById('placeAllBtn2');
+  if (placeAll) {
+    placeAll.addEventListener('click', () => {
+      const ids = inboxItems.map(f => f.id);
+      ids.forEach((id, i) => setTimeout(() => placeFile(id), i * 100));
+    });
+  }
+
+  // Tidy now
+  const tidyNow = document.getElementById('tidyNowBtn');
+  if (tidyNow) {
+    tidyNow.addEventListener('click', () => {
+      doTidy();
+      document.getElementById('tidyBtn').querySelector('#tidyTitle').textContent = 'tidied today.';
+      document.getElementById('tidyBtn').querySelector('#tidySub').textContent = 'tomorrow morning, again.';
+    });
+  }
+
+  // Card click → disambig for uncertain files
+  document.querySelectorAll('.inbox-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.classList.contains('accept-btn') || e.target.classList.contains('change-btn')) return;
+      const id = parseInt(card.dataset.id);
+      const file = inboxItems.find(f => f.id === id);
+      if (file && file.cls === 'mid') {
+        document.getElementById('disambigOverlay').style.display = 'flex';
+        document.querySelector('.disambig-filename').textContent = file.name;
+      }
+    });
+  });
+}
+
+function placeFile(id) {
+  inboxItems = inboxItems.filter(f => f.id !== id);
+  updateInboxCount();
+  // Animate card out if visible
+  const card = document.querySelector(`.inbox-card[data-id="${id}"]`);
+  if (card) {
+    card.style.transition = 'opacity 220ms ease, transform 220ms ease';
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(-6px)';
+    setTimeout(() => card.remove(), 230);
+  }
+  // Update label
+  const sub = document.getElementById('inboxSubLabel');
+  if (sub) sub.textContent = `${inboxItems.length} awaiting placement`;
+}
+
+function doTidy() {
+  tidied = true;
+  const ids = inboxItems.map(f => f.id);
+  ids.forEach((id, i) => setTimeout(() => placeFile(id), i * 100));
+  setTimeout(() => setView('everything'), ids.length * 100 + 200);
+}
+
+function updateInboxCount() {
+  const cnt = document.getElementById('inboxCount');
+  if (cnt) cnt.textContent = inboxItems.length;
+}
+
+/* ════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Initial render
+  setView('everything');
+
+  // Rail navigation
+  document.querySelectorAll('.rail-item').forEach(item => {
+    item.addEventListener('click', () => setView(item.dataset.view));
+  });
+
+  // Tidy rail button
+  document.getElementById('tidyBtn').addEventListener('click', function() {
+    doTidy();
+    this.querySelector('#tidyTitle').textContent = 'tidied today.';
+    this.querySelector('#tidySub').textContent = 'tomorrow morning, again.';
+  });
+
+  // ── Kanji toggle ────────────────────────────────────
+  const kanjiBtn = document.getElementById('kanjiToggle');
+  kanjiBtn.addEventListener('click', () => {
+    const off = document.documentElement.classList.toggle('no-kanji');
+    kanjiBtn.classList.toggle('active', off);
+    kanjiBtn.title = off ? 'Show kanji characters' : 'Hide kanji characters';
+  });
+
+  // ── Theme toggle ────────────────────────────────────
+  const themeBtn = document.getElementById('themeToggle');
+  themeBtn.addEventListener('click', () => {
+    const isLight = document.documentElement.classList.toggle('light');
+    document.documentElement.classList.toggle('dark', !isLight);
+    themeBtn.textContent = isLight ? '☾' : '☀';
+    themeBtn.title = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+  });
+
+  // ── Disambiguation overlay ──────────────────────────
+  document.getElementById('disambigOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('disambigOverlay'))
+      document.getElementById('disambigOverlay').style.display = 'none';
+  });
+  document.querySelectorAll('.disambig-choice').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.disambig-choice').forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected');
+    });
+  });
+  document.getElementById('disambigSkip').addEventListener('click', () => {
+    document.getElementById('disambigOverlay').style.display = 'none';
+  });
+  document.getElementById('disambigConfirm').addEventListener('click', () => {
+    document.getElementById('disambigOverlay').style.display = 'none';
+  });
+
+  // ── Keyboard shortcut ⌘K ───────────────────────────
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      const input = document.querySelector('.ask-input');
+      if (input) { input.focus(); }
+    }
+    if (e.key === 'Escape') {
+      document.getElementById('disambigOverlay').style.display = 'none';
+    }
+  });
+
+  // ── Ask button ──────────────────────────────────────
+  document.getElementById('askTrigger').addEventListener('click', () => {
+    const input = document.querySelector('.ask-input');
+    if (input) input.focus();
+  });
+
+});
+</script>
+</body>
+</html>

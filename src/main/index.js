@@ -5,16 +5,57 @@
 
 const path = require("path");
 
-// 1. Point esbuild to the unpacked folder BEFORE it tries to run
+// 1. Point esbuild to the unpacked folder BEFORE it tries to run.
+//
+//    The native binary location differs by platform:
+//      Windows  → @esbuild/win32-{arch}/esbuild.exe   (no bin/ subdir)
+//      macOS    → @esbuild/darwin-{arch}/bin/esbuild
+//      Linux    → @esbuild/linux-{arch}/bin/esbuild
+//
+//    Mirrors the logic in esbuild's own pkgAndSubpathForCurrentPlatform().
 if (__dirname.includes("app.asar")) {
-  process.env.ESBUILD_BINARY_PATH = path.join(
+  const unpackedModules = path.join(
     process.resourcesPath,
     "app.asar.unpacked",
-    "node_modules",
-    "esbuild",
-    "bin",
-    "esbuild"
+    "node_modules"
   );
+
+  const platform = process.platform; // 'win32' | 'darwin' | 'linux'
+  const arch     = process.arch;     // 'x64' | 'arm64' | 'ia32'
+
+  // Map [platform, arch] → @esbuild package name + binary subpath
+  const platformMap = {
+    // Windows — binary sits at package root, not in bin/
+    win32: {
+      x64:   { pkg: "@esbuild/win32-x64",   bin: "esbuild.exe" },
+      arm64: { pkg: "@esbuild/win32-arm64",  bin: "esbuild.exe" },
+      ia32:  { pkg: "@esbuild/win32-ia32",   bin: "esbuild.exe" },
+    },
+    // macOS
+    darwin: {
+      x64:   { pkg: "@esbuild/darwin-x64",   bin: path.join("bin", "esbuild") },
+      arm64: { pkg: "@esbuild/darwin-arm64",  bin: path.join("bin", "esbuild") },
+    },
+    // Linux
+    linux: {
+      x64:   { pkg: "@esbuild/linux-x64",    bin: path.join("bin", "esbuild") },
+      arm64: { pkg: "@esbuild/linux-arm64",   bin: path.join("bin", "esbuild") },
+      arm:   { pkg: "@esbuild/linux-arm",     bin: path.join("bin", "esbuild") },
+    },
+  };
+
+  const entry = (platformMap[platform] || {})[arch];
+  if (entry) {
+    process.env.ESBUILD_BINARY_PATH = path.join(unpackedModules, entry.pkg, entry.bin);
+  } else {
+    // Fallback — older esbuild layout (pre-0.17, binary inside the main package)
+    const ext = platform === "win32" ? ".exe" : "";
+    process.env.ESBUILD_BINARY_PATH = path.join(
+      unpackedModules, "esbuild", "bin", `esbuild${ext}`
+    );
+  }
+
+  console.log(`[main] ESBUILD_BINARY_PATH = ${process.env.ESBUILD_BINARY_PATH}`);
 }
 
 // 2. Register tsx so Node/Electron can require .ts files directly
@@ -193,6 +234,12 @@ const {
   initWatcher, addWatchFolder, removeWatchFolder,
   setWatcherEnabled, getWatcherStatus,
 } = require("./services/WatcherService");
+
+// Workflow Engine (background file workflows — PDF summary, etc.)
+const {
+  initWorkflowEngine, onFileReady: workflowOnFileReady,
+  PREF_PDF_SUMMARY_ENABLED,
+} = require("./services/WorkflowEngine");
 
 // AI Batch Rename
 const { suggestRename, applyRename } = require("./services/RenameService");
@@ -631,18 +678,39 @@ app.whenReady().then(async () => {
           notif.show();
         }
       },
-      // onCountdown: file finished writing — 5-minute grace period begins
+      // onCountdown: file finished writing — 5-minute grace period begins.
+      // Also notify WorkflowEngine so background workflows can run immediately
+      // (in parallel with the 5-minute grace period before actual organizing).
       (filename, filePath, countdownSeconds) => {
         mainWindow?.webContents.send("watcher:countdown-started", {
           filename,
           filePath,
           countdownSeconds,
         });
+        // Workflow Engine hook — purely additive, never interferes with organize
+        try { workflowOnFileReady(filename, filePath); } catch { /* non-fatal */ }
       }
     );
     console.log("[main] Folder watcher initialized");
   } catch (err) {
     console.warn(`[main] Folder watcher init failed: ${err.message}`);
+  }
+
+  // ── 3a. Init Workflow Engine (background file workflows) ──
+  try {
+    initWorkflowEngine(
+      // Settings getter: reads from electron-store, never throws
+      (key, defaultValue) => {
+        try { return appSettingsStore.get(key, defaultValue); } catch { return defaultValue; }
+      },
+      // Renderer notifier: send IPC event to renderer window
+      (channel, payload) => {
+        mainWindow?.webContents.send(channel, payload);
+      }
+    );
+    console.log("[main] Workflow engine initialized");
+  } catch (err) {
+    console.warn(`[main] Workflow engine init failed: ${err.message}`);
   }
 
   // ── 3b. Init cloud storage connectors (Google Drive + iCloud) ──
@@ -1165,6 +1233,19 @@ ipcMain.handle("model:pull", async () => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+// ── Workflow Engine Settings ──────────────────────────────────
+
+/** Get the current state of the "auto-summarize new PDFs" toggle. */
+ipcMain.handle("workflow:get-pdf-summary-enabled", () => {
+  return appSettingsStore.get(PREF_PDF_SUMMARY_ENABLED, false);
+});
+
+/** Enable or disable the "auto-summarize new PDFs" workflow. */
+ipcMain.handle("workflow:set-pdf-summary-enabled", (_event, enabled) => {
+  appSettingsStore.set(PREF_PDF_SUMMARY_ENABLED, !!enabled);
+  return !!enabled;
 });
 
 // ── First-run / System Requirements ──────────────────────────
