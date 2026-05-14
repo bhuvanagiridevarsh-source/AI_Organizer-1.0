@@ -21,8 +21,10 @@ const path = require("path");
 const fs   = require("fs");
 
 // Map of [electron-builder platform string] → @esbuild package names
+// NOTE: electron-builder passes platform.name as "windows" / "mac" / "linux"
+// (not "win") — verify with: console.log(platform.name) in the hook.
 const ESBUILD_PLATFORM_PKGS = {
-  win:   {
+  windows: {
     x64:   "@esbuild/win32-x64",
     arm64: "@esbuild/win32-arm64",
     ia32:  "@esbuild/win32-ia32",

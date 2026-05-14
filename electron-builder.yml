@@ -88,7 +88,11 @@ dmg:
 # Windows
 win:
   target:
-    - nsis
+    # zip = no makensis/wine needed — safe to cross-compile from Apple Silicon.
+    # Produces dist/System-Janitor-1.0.0-win.zip; testers unzip and run the .exe.
+    # Switch back to "nsis" when building on a real Windows machine for a polished installer.
+    - zip
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false

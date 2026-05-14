@@ -9,7 +9,7 @@
     "dev": "electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
+    "build:win": "electron-builder --win --x64",
     "build:linux": "electron-builder --linux",
     "build:protected": "node scripts/build-protected.js",
     "build:mac:protected": "node scripts/build-protected.js --mac",
