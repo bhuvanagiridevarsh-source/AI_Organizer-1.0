@@ -1,0 +1,107 @@
+name: Build & Release
+
+# Triggers:
+#   - Push a tag like "v1.0.1" → builds all platforms and publishes a GitHub Release
+#   - Manual run from the Actions tab → builds without publishing (for testing the workflow)
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  # ── macOS build (runs on Apple Silicon runner) ────────────────────────────
+  build-mac:
+    runs-on: macos-14        # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS (DMG + zip)
+        run: npm run build:mac
+        env:
+          # Skip signing — no paid Apple cert. Users may see a Gatekeeper warning;
+          # they can right-click → Open to bypass it.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: warn
+
+  # ── Windows build (runs on a real Windows runner — no wine needed) ─────────
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild -f -w node-llama-cpp
+        # node-llama-cpp needs to be compiled for the Electron ABI on Windows
+
+      - name: Build Windows (NSIS installer + zip)
+        # On a real Windows runner we can use nsis — no wine needed.
+        # Also re-enable rcedit so the .exe has proper version metadata.
+        run: npx electron-builder --win --x64 --config.win.signAndEditExecutable=false --config.win.target[0]=nsis --config.win.target[1]=zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-dist
+          path: |
+            dist/*.exe
+            dist/*.zip
+          if-no-files-found: warn
+
+  # ── Publish GitHub Release (only on tag pushes) ────────────────────────────
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-dist
+          path: dist/
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: win-dist
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "System Janitor ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

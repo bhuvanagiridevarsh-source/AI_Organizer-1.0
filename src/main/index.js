@@ -58,8 +58,13 @@ if (__dirname.includes("app.asar")) {
   console.log(`[main] ESBUILD_BINARY_PATH = ${process.env.ESBUILD_BINARY_PATH}`);
 }
 
-// 2. Register tsx so Node/Electron can require .ts files directly
-require("tsx/cjs");
+// 2. Register tsx CJS hook so Node/Electron can require .ts files directly.
+//    IMPORTANT: do NOT use require("tsx/cjs") — "tsx/cjs" is a package.json
+//    subpath export, and subpath export resolution fails inside Electron's
+//    asar virtual filesystem on Windows, producing "Cannot find module 'tsx/cjs'".
+//    Requiring the underlying file directly bypasses the exports-field lookup
+//    and works identically in both dev (plain node_modules) and prod (asar).
+require(path.join(__dirname, "..", "..", "node_modules", "tsx", "dist", "cjs", "index.cjs"));
 
 // ── Global crash guards — must be registered before any other code ──────────
 // Without these, an unhandled promise rejection anywhere in an IPC handler
