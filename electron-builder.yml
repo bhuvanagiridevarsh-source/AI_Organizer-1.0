@@ -16,6 +16,7 @@ afterPack: scripts/afterPack.js
 # including dist/ (old builds), FINAL_APP_FOLDER, test_folder, etc.
 files:
   - "**/*"
+  # Build output / large dev-only folders
   - "!dist/**"
   - "!FINAL_APP_FOLDER/**"
   - "!test_folder/**"
@@ -31,6 +32,9 @@ files:
   - "!wizard_state.json"
   - "!CLASSIFICATION_FIX_PROMPT.md"
   - "!AppleWWDRCAG3.cer"
+  # TypeScript source files — compiled to .js by scripts/compile-ts.js
+  # before packing; .ts files are not needed (and not executable) in the bundle.
+  - "!src/**/*.ts"
 
 # ── Source code protection ──
 asar: true

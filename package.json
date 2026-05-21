@@ -7,10 +7,12 @@
   "scripts": {
     "postinstall": "electron-rebuild -f -w node-llama-cpp",
     "dev": "electron .",
-    "build": "electron-builder",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win --x64",
-    "build:linux": "electron-builder --linux",
+    "precompile": "echo Compiling TypeScript...",
+    "compile": "node scripts/compile-ts.js",
+    "build":       "node scripts/compile-ts.js && electron-builder",
+    "build:mac":   "node scripts/compile-ts.js && electron-builder --mac",
+    "build:win":   "node scripts/compile-ts.js && electron-builder --win --x64",
+    "build:linux": "node scripts/compile-ts.js && electron-builder --linux",
     "build:protected": "node scripts/build-protected.js",
     "build:mac:protected": "node scripts/build-protected.js --mac",
     "sign:mac": "bash scripts/sign-and-package.sh",
@@ -27,13 +29,13 @@
     "mammoth": "^1.11.0",
     "node-llama-cpp": "^3.0.0",
     "pdf-parse": "1.1.4",
-    "tesseract.js": "5.1.1",
-    "tsx": "^4.21.0"
+    "tesseract.js": "5.1.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "electron": "^40.9.2",
     "electron-builder": "^26.8.1",
-    "javascript-obfuscator": "^5.3.0"
+    "javascript-obfuscator": "^5.3.0",
+    "tsx": "^4.21.0"
   }
 }

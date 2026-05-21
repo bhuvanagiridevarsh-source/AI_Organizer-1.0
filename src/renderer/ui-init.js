@@ -8,15 +8,17 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // ── Theme toggle ──────────────────────────────────────
+  // ── Theme toggle — light is default, dark class flips it ─────────────
   const themeBtn = document.getElementById('themeToggle');
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
-      const isLight = document.documentElement.classList.toggle('light');
-      document.documentElement.classList.toggle('dark', !isLight);
-      themeBtn.textContent = isLight ? '☾' : '☀';
-      themeBtn.title = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+      const isDark = document.documentElement.classList.toggle('dark');
+      themeBtn.textContent = isDark ? '☀' : '☾';
+      themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
     });
+    // Initial icon — light by default
+    themeBtn.textContent = '☾';
+    themeBtn.title = 'Switch to dark mode';
   }
 
   // ── Rail proxy buttons → trigger original hidden buttons ─────────────────

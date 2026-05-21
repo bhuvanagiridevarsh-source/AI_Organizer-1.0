@@ -58,13 +58,24 @@ if (__dirname.includes("app.asar")) {
   console.log(`[main] ESBUILD_BINARY_PATH = ${process.env.ESBUILD_BINARY_PATH}`);
 }
 
-// 2. Register tsx CJS hook so Node/Electron can require .ts files directly.
-//    IMPORTANT: do NOT use require("tsx/cjs") — "tsx/cjs" is a package.json
-//    subpath export, and subpath export resolution fails inside Electron's
-//    asar virtual filesystem on Windows, producing "Cannot find module 'tsx/cjs'".
-//    Requiring the underlying file directly bypasses the exports-field lookup
-//    and works identically in both dev (plain node_modules) and prod (asar).
-require(path.join(__dirname, "..", "..", "node_modules", "tsx", "dist", "cjs", "index.cjs"));
+// 2. Register tsx CJS hook — DEVELOPMENT ONLY.
+//
+//    In the packaged app (app.asar) all TypeScript service files are
+//    pre-compiled to JavaScript by scripts/compile-ts.js before packing,
+//    so tsx is never needed at runtime in production.
+//
+//    In development (plain node_modules, no asar) tsx is still available
+//    as a devDependency and is loaded here so .ts files can be required
+//    directly without a manual compile step.
+if (!__dirname.includes("app.asar")) {
+  try {
+    require(path.join(__dirname, "..", "..", "node_modules", "tsx", "dist", "cjs", "index.cjs"));
+    console.log("[main] tsx CJS hook registered (dev mode)");
+  } catch (e) {
+    // tsx not installed (e.g. npm ci --omit=dev) — .js files must exist
+    console.warn("[main] tsx not available:", e.message);
+  }
+}
 
 // ── Global crash guards — must be registered before any other code ──────────
 // Without these, an unhandled promise rejection anywhere in an IPC handler
