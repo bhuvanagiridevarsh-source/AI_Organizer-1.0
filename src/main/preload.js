@@ -647,4 +647,14 @@ contextBridge.exposeInMainWorld("api", {
     setPdfSummaryEnabled: (enabled) =>
       ipcRenderer.invoke("workflow:set-pdf-summary-enabled", enabled),
   },
+
+  // ── Prompt Enhancer ──────────────────────────────────
+  promptEnhancer: {
+    /**
+     * Enhance a prompt using context inferred from the user's local files.
+     * Everything runs on-device — no data leaves the machine.
+     * Returns { enhanced: string } or { enhanced: null, error: string }.
+     */
+    enhance: (userPrompt) => ipcRenderer.invoke("prompt:enhance", userPrompt),
+  },
 });

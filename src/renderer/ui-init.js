@@ -165,4 +165,112 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   })();
 
+  // ── Prompt Enhancer Panel ──────────────────────────────────────────────────
+  (() => {
+    const panel      = document.getElementById('pePanel');
+    const closeBtn   = document.getElementById('peCloseBtn');
+    const railBtn    = document.getElementById('railPromptEnhancerBtn');
+    const input      = document.getElementById('peInput');
+    const enhanceBtn = document.getElementById('peEnhanceBtn');
+    const spinner    = document.getElementById('peSpinner');
+    const errorEl    = document.getElementById('peError');
+    const resultBox  = document.getElementById('peResultBox');
+    const resultText = document.getElementById('peResultText');
+    const copyBtn    = document.getElementById('peCopyBtn');
+
+    if (!panel || !railBtn) return;
+
+    function openPanel() {
+      panel.classList.add('open');
+      document.querySelectorAll('.rail-item').forEach(b => b.classList.remove('active'));
+      railBtn.classList.add('active');
+      // Close chat panel if open
+      const chatPanel = document.getElementById('chatPanel');
+      if (chatPanel) chatPanel.classList.remove('open');
+    }
+
+    function closePanel() {
+      panel.classList.remove('open');
+      railBtn.classList.remove('active');
+    }
+
+    railBtn.addEventListener('click', () => {
+      panel.classList.contains('open') ? closePanel() : openPanel();
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', closePanel);
+
+    function setLoading(loading) {
+      enhanceBtn.disabled = loading;
+      spinner.classList.toggle('visible', loading);
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.add('visible');
+      resultBox.classList.remove('visible');
+    }
+
+    function showResult(text) {
+      errorEl.classList.remove('visible');
+      resultText.textContent = text;
+      resultBox.classList.add('visible');
+    }
+
+    if (enhanceBtn) {
+      enhanceBtn.addEventListener('click', async () => {
+        const prompt = (input.value || '').trim();
+        if (!prompt) {
+          showError('Please type a prompt first.');
+          return;
+        }
+        setLoading(true);
+        errorEl.classList.remove('visible');
+        resultBox.classList.remove('visible');
+        try {
+          const res = await window.api.promptEnhancer.enhance(prompt);
+          if (res.error) {
+            showError(res.error);
+          } else {
+            showResult(res.enhanced);
+          }
+        } catch (err) {
+          showError(err?.message || 'Something went wrong. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      });
+    }
+
+    // Ctrl+Enter / Cmd+Enter triggers enhance
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          enhanceBtn.click();
+        }
+      });
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const text = resultText.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+        }).catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+        });
+      });
+    }
+  })();
+
 });

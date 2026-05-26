@@ -2607,6 +2607,57 @@ ipcMain.handle("chat:search", (_event, query) => {
   return searchFiles(query, 8);
 });
 
+// ── Prompt Enhancer ──────────────────────────────────────────────────────────
+// Takes a raw user prompt, enriches it with local file/knowledge context,
+// and returns an improved version — all processed on-device, no data sent out.
+ipcMain.handle("prompt:enhance", async (_event, userPrompt) => {
+  try {
+    const LlamaService = require("./services/LlamaService");
+    if (!LlamaService.isReady()) {
+      return { enhanced: null, error: "AI engine is still loading. Please wait a moment and try again." };
+    }
+
+    // Pull context from the knowledge graph
+    const contextLines = [];
+    try {
+      const kg = loadKG(currentBaseDir);
+      if (kg && Object.keys(kg.folders).length > 0) {
+        const folderNames = Object.keys(kg.folders).slice(0, 20);
+        contextLines.push(`User's file categories: ${folderNames.join(", ")}`);
+        const termLines = [];
+        for (const [folder, data] of Object.entries(kg.folders).slice(0, 10)) {
+          if (data.terms && data.terms.length > 0) {
+            termLines.push(`  ${folder}: ${data.terms.slice(0, 6).join(", ")}`);
+          }
+        }
+        if (termLines.length) contextLines.push(`Topics per category:\n${termLines.join("\n")}`);
+      }
+    } catch (_e) { /* knowledge graph may not exist yet — that's fine */ }
+
+    const contextBlock = contextLines.length > 0
+      ? `\nContext inferred from this user's local files:\n${contextLines.join("\n")}\n`
+      : "\nNo file context available yet. Enhance based on general best practices only.\n";
+
+    const fullPrompt =
+      `You are a personal prompt enhancer. Your job is to rewrite the user's prompt to be more specific, detailed, and context-aware using only the context provided below. Do not invent facts not mentioned in the context. If no relevant context applies, simply make the prompt clearer and more precise.` +
+      contextBlock +
+      `\nUser's original prompt:\n${userPrompt}\n\nImproved prompt (output ONLY the rewritten prompt, no explanation, no preamble, no quotes):`;
+
+    const result = await LlamaService.generate(fullPrompt, {
+      maxTokens: 512,
+      temperature: 0.3,
+      timeoutMs: 30000,
+    });
+
+    const enhanced = (result || "").trim();
+    if (!enhanced) return { enhanced: null, error: "AI returned an empty response. Please try again." };
+    return { enhanced };
+  } catch (err) {
+    console.error("[prompt:enhance] error:", err?.message);
+    return { enhanced: null, error: err?.message ?? "Enhancement failed." };
+  }
+});
+
 /**
  * Manually index a file (called after a successful file move).
  * filePath: destination path, folder: category name, text: extracted content
