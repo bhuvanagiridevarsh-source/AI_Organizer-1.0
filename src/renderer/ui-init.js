@@ -167,26 +167,109 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Prompt Enhancer Panel ──────────────────────────────────────────────────
   (() => {
-    const panel      = document.getElementById('pePanel');
-    const closeBtn   = document.getElementById('peCloseBtn');
-    const railBtn    = document.getElementById('railPromptEnhancerBtn');
-    const input      = document.getElementById('peInput');
-    const enhanceBtn = document.getElementById('peEnhanceBtn');
-    const spinner    = document.getElementById('peSpinner');
-    const errorEl    = document.getElementById('peError');
-    const resultBox  = document.getElementById('peResultBox');
-    const resultText = document.getElementById('peResultText');
-    const copyBtn    = document.getElementById('peCopyBtn');
+    const panel        = document.getElementById('pePanel');
+    const closeBtn     = document.getElementById('peCloseBtn');
+    const railBtn      = document.getElementById('railPromptEnhancerBtn');
+    const input        = document.getElementById('peInput');
+    const enhanceBtn   = document.getElementById('peEnhanceBtn');
+    const spinner      = document.getElementById('peSpinner');
+    const errorEl      = document.getElementById('peError');
+    const resultBox    = document.getElementById('peResultBox');
+    const resultText   = document.getElementById('peResultText');
+    const copyBtn      = document.getElementById('peCopyBtn');
+    const nsRow        = document.getElementById('peNamespaceRow');
+    const nsPills      = document.getElementById('peNamespacePills');
+    const nsUsedBadge  = document.getElementById('peNsUsedBadge');
+    const nsUsedDot    = document.getElementById('peNsUsedDot');
+    const nsUsedLabel  = document.getElementById('peNsUsedLabel');
 
     if (!panel || !railBtn) return;
+
+    // Track which namespace pill the user has pinned (null = auto-detect)
+    let selectedNamespaceId = null;
+    let loadedNamespaces    = [];
+
+    // ── Namespace pills ──────────────────────────────────────────────────────
+
+    async function loadNamespaces() {
+      try {
+        if (!window.api?.namespace) return;
+        const namespaces = await window.api.namespace.list();
+        loadedNamespaces = namespaces || [];
+        renderNamespacePills();
+      } catch { /* namespace API not yet available */ }
+    }
+
+    function renderNamespacePills() {
+      if (!nsPills || !nsRow) return;
+      nsPills.innerHTML = '';
+
+      if (loadedNamespaces.length === 0) {
+        nsRow.style.display = 'none';
+        return;
+      }
+
+      nsRow.style.display = 'flex';
+
+      // "Auto" pill — let system detect
+      const autoPill = makePill('auto', 'Auto', '#888', selectedNamespaceId === null);
+      autoPill.addEventListener('click', () => {
+        selectedNamespaceId = null;
+        updatePillActive();
+      });
+      nsPills.appendChild(autoPill);
+
+      // One pill per namespace
+      for (const ns of loadedNamespaces) {
+        const pill = makePill(ns.id, ns.label, ns.color, selectedNamespaceId === ns.id);
+        pill.addEventListener('click', () => {
+          selectedNamespaceId = ns.id;
+          updatePillActive();
+        });
+        nsPills.appendChild(pill);
+      }
+    }
+
+    function makePill(id, label, color, isActive) {
+      const pill = document.createElement('button');
+      pill.className = 'pe-ns-pill' + (isActive ? ' active' : '');
+      pill.dataset.nsId = id;
+      pill.style.borderColor = color;
+      if (isActive) pill.style.background = color;
+
+      const dot = document.createElement('div');
+      dot.className = 'pe-ns-dot';
+      dot.style.background = color;
+
+      const span = document.createElement('span');
+      span.textContent = label;
+
+      pill.appendChild(dot);
+      pill.appendChild(span);
+      return pill;
+    }
+
+    function updatePillActive() {
+      if (!nsPills) return;
+      nsPills.querySelectorAll('.pe-ns-pill').forEach(pill => {
+        const isActive = pill.dataset.nsId === (selectedNamespaceId || 'auto');
+        pill.classList.toggle('active', isActive);
+        const ns = loadedNamespaces.find(n => n.id === pill.dataset.nsId);
+        const color = ns?.color || '#888';
+        pill.style.background = isActive ? color : 'rgba(91,79,232,0.06)';
+      });
+    }
+
+    // ── Panel open/close ─────────────────────────────────────────────────────
 
     function openPanel() {
       panel.classList.add('open');
       document.querySelectorAll('.rail-item').forEach(b => b.classList.remove('active'));
       railBtn.classList.add('active');
-      // Close chat panel if open
       const chatPanel = document.getElementById('chatPanel');
       if (chatPanel) chatPanel.classList.remove('open');
+      // Refresh namespace list every time panel opens
+      loadNamespaces();
     }
 
     function closePanel() {
@@ -200,6 +283,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (closeBtn) closeBtn.addEventListener('click', closePanel);
 
+    // ── Enhance logic ────────────────────────────────────────────────────────
+
     function setLoading(loading) {
       enhanceBtn.disabled = loading;
       spinner.classList.toggle('visible', loading);
@@ -209,30 +294,46 @@ document.addEventListener('DOMContentLoaded', () => {
       errorEl.textContent = msg;
       errorEl.classList.add('visible');
       resultBox.classList.remove('visible');
+      if (nsUsedBadge) nsUsedBadge.classList.remove('visible');
     }
 
-    function showResult(text) {
+    function showResult(text, namespaceId, namespaceName) {
       errorEl.classList.remove('visible');
       resultText.textContent = text;
       resultBox.classList.add('visible');
+
+      // Show which namespace was used
+      if (nsUsedBadge && namespaceId && namespaceName) {
+        const ns = loadedNamespaces.find(n => n.id === namespaceId);
+        const color = ns?.color || '#0d9488';
+        nsUsedDot.style.background = color;
+        nsUsedLabel.textContent = `Used "${namespaceName}" context only`;
+        nsUsedLabel.style.color = color;
+        nsUsedBadge.classList.add('visible');
+      } else if (nsUsedBadge) {
+        nsUsedLabel.textContent = 'Used general context (no specific scope detected)';
+        nsUsedLabel.style.color = '';
+        nsUsedDot.style.background = '#888';
+        nsUsedBadge.classList.add('visible');
+      }
     }
 
     if (enhanceBtn) {
       enhanceBtn.addEventListener('click', async () => {
         const prompt = (input.value || '').trim();
-        if (!prompt) {
-          showError('Please type a prompt first.');
-          return;
-        }
+        if (!prompt) { showError('Please type a prompt first.'); return; }
+
         setLoading(true);
         errorEl.classList.remove('visible');
         resultBox.classList.remove('visible');
+        if (nsUsedBadge) nsUsedBadge.classList.remove('visible');
+
         try {
-          const res = await window.api.promptEnhancer.enhance(prompt);
+          const res = await window.api.promptEnhancer.enhance(prompt, selectedNamespaceId);
           if (res.error) {
             showError(res.error);
           } else {
-            showResult(res.enhanced);
+            showResult(res.enhanced, res.namespaceId, res.namespaceName);
           }
         } catch (err) {
           showError(err?.message || 'Something went wrong. Please try again.');

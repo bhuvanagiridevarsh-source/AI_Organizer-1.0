@@ -2607,41 +2607,53 @@ ipcMain.handle("chat:search", (_event, query) => {
   return searchFiles(query, 8);
 });
 
-// ── Prompt Enhancer ──────────────────────────────────────────────────────────
-// Takes a raw user prompt, enriches it with local file/knowledge context,
-// and returns an improved version — all processed on-device, no data sent out.
-ipcMain.handle("prompt:enhance", async (_event, userPrompt) => {
+// ── Prompt Enhancer + Namespace Isolation ────────────────────────────────────
+// The namespace system ensures that Company A's files never influence prompts
+// about Company B. Each folder gets tagged to a namespace (entity/project/personal)
+// and context is scoped to only that namespace at enhancement time.
+
+const NamespaceService = require("./services/NamespaceService");
+
+ipcMain.handle("prompt:enhance", async (_event, userPrompt, preferredNamespaceId) => {
   try {
     const LlamaService = require("./services/LlamaService");
     if (!LlamaService.isReady()) {
       return { enhanced: null, error: "AI engine is still loading. Please wait a moment and try again." };
     }
 
-    // Pull context from the knowledge graph
-    const contextLines = [];
-    try {
-      const kg = loadKG(currentBaseDir);
-      if (kg && Object.keys(kg.folders).length > 0) {
-        const folderNames = Object.keys(kg.folders).slice(0, 20);
-        contextLines.push(`User's file categories: ${folderNames.join(", ")}`);
-        const termLines = [];
-        for (const [folder, data] of Object.entries(kg.folders).slice(0, 10)) {
-          if (data.terms && data.terms.length > 0) {
-            termLines.push(`  ${folder}: ${data.terms.slice(0, 6).join(", ")}`);
-          }
-        }
-        if (termLines.length) contextLines.push(`Topics per category:\n${termLines.join("\n")}`);
-      }
-    } catch (_e) { /* knowledge graph may not exist yet — that's fine */ }
+    const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
 
-    const contextBlock = contextLines.length > 0
-      ? `\nContext inferred from this user's local files:\n${contextLines.join("\n")}\n`
-      : "\nNo file context available yet. Enhance based on general best practices only.\n";
+    // Determine which namespace to use
+    let namespaceId = preferredNamespaceId || null;
+    let namespaceName = null;
+
+    if (!namespaceId && kg) {
+      namespaceId = NamespaceService.detectPromptNamespace(userPrompt);
+    }
+
+    // Build context — ONLY from the detected namespace if one is found
+    let contextBlock = "\nNo file context available yet. Enhance based on general best practices only.\n";
+
+    if (kg && Object.keys(kg.folders || {}).length > 0) {
+      if (namespaceId) {
+        // Scoped: only this namespace's folders
+        const scoped = NamespaceService.getContextForNamespace(namespaceId, kg);
+        const ns = NamespaceService.listNamespaces().find(n => n.id === namespaceId);
+        namespaceName = ns?.label || namespaceId;
+        contextBlock = scoped
+          ? `\nContext (scoped to "${namespaceName}" only — no other data included):\n${scoped}\n`
+          : `\nNo context yet for "${namespaceName}". Enhance based on the prompt alone.\n`;
+      } else {
+        // No namespace detected — use general context but warn about scope
+        const folderNames = Object.keys(kg.folders).slice(0, 15).join(", ");
+        contextBlock = `\nGeneral file context (namespace could not be determined — using broad context):\nFile categories: ${folderNames}\n`;
+      }
+    }
 
     const fullPrompt =
-      `You are a personal prompt enhancer. Your job is to rewrite the user's prompt to be more specific, detailed, and context-aware using only the context provided below. Do not invent facts not mentioned in the context. If no relevant context applies, simply make the prompt clearer and more precise.` +
+      `You are a personal prompt enhancer. Rewrite the user's prompt to be more specific, detailed, and context-aware using ONLY the context below. Do not invent facts. If context is irrelevant, just make the prompt clearer.` +
       contextBlock +
-      `\nUser's original prompt:\n${userPrompt}\n\nImproved prompt (output ONLY the rewritten prompt, no explanation, no preamble, no quotes):`;
+      `\nUser's original prompt:\n${userPrompt}\n\nImproved prompt (output ONLY the rewritten prompt — no explanation, no preamble, no quotes):`;
 
     const result = await LlamaService.generate(fullPrompt, {
       maxTokens: 512,
@@ -2651,10 +2663,59 @@ ipcMain.handle("prompt:enhance", async (_event, userPrompt) => {
 
     const enhanced = (result || "").trim();
     if (!enhanced) return { enhanced: null, error: "AI returned an empty response. Please try again." };
-    return { enhanced };
+
+    return { enhanced, namespaceId, namespaceName };
   } catch (err) {
     console.error("[prompt:enhance] error:", err?.message);
     return { enhanced: null, error: err?.message ?? "Enhancement failed." };
+  }
+});
+
+// ── Namespace management IPC ──────────────────────────────────────────────────
+
+/** List all known namespaces. */
+ipcMain.handle("namespace:list", () => {
+  try { return NamespaceService.listNamespaces(); }
+  catch (e) { console.error("[namespace:list]", e?.message); return []; }
+});
+
+/** Get folder→namespace assignment map. */
+ipcMain.handle("namespace:folder-assignments", () => {
+  try { return NamespaceService.getFolderAssignments(); }
+  catch (e) { return {}; }
+});
+
+/** Manually create or update a namespace. */
+ipcMain.handle("namespace:upsert", (_event, id, label, color, entityNames) => {
+  try { return NamespaceService.upsertNamespace(id, label, color, entityNames); }
+  catch (e) { console.error("[namespace:upsert]", e?.message); return null; }
+});
+
+/** Assign a folder to a namespace. */
+ipcMain.handle("namespace:assign-folder", (_event, folderName, namespaceId) => {
+  try {
+    NamespaceService.assignFolderToNamespace(folderName, namespaceId);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message };
+  }
+});
+
+/**
+ * Sync namespaces from the knowledge graph.
+ * Call this after file organization completes — it auto-detects entity names
+ * from folder names and keywords, creates namespaces, and assigns folders.
+ */
+ipcMain.handle("namespace:sync", async () => {
+  try {
+    const kg = loadKG(currentBaseDir);
+    if (!kg) return { created: [], assigned: [] };
+    const result = await NamespaceService.syncNamespacesFromKG(kg);
+    console.log(`[namespace:sync] Created: ${result.created.join(", ") || "none"}, Assigned: ${result.assigned.length} folders`);
+    return result;
+  } catch (e) {
+    console.error("[namespace:sync]", e?.message);
+    return { created: [], assigned: [], error: e?.message };
   }
 });
 

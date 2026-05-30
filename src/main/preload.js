@@ -651,10 +651,30 @@ contextBridge.exposeInMainWorld("api", {
   // ── Prompt Enhancer ──────────────────────────────────
   promptEnhancer: {
     /**
-     * Enhance a prompt using context inferred from the user's local files.
-     * Everything runs on-device — no data leaves the machine.
-     * Returns { enhanced: string } or { enhanced: null, error: string }.
+     * Enhance a prompt using context from the user's local files.
+     * Pass an optional namespaceId to force a specific context scope.
+     * Returns { enhanced, namespaceId?, namespaceName?, error? }.
      */
-    enhance: (userPrompt) => ipcRenderer.invoke("prompt:enhance", userPrompt),
+    enhance: (userPrompt, namespaceId) =>
+      ipcRenderer.invoke("prompt:enhance", userPrompt, namespaceId || null),
+  },
+
+  // ── Namespace isolation ───────────────────────────────
+  namespace: {
+    /** List all known namespaces (id, label, color, entityNames, ...). */
+    list: () => ipcRenderer.invoke("namespace:list"),
+    /** Get folder→namespace assignment map. */
+    folderAssignments: () => ipcRenderer.invoke("namespace:folder-assignments"),
+    /** Create or update a namespace manually. */
+    upsert: (id, label, color, entityNames) =>
+      ipcRenderer.invoke("namespace:upsert", id, label, color, entityNames),
+    /** Assign a folder to a namespace. */
+    assignFolder: (folderName, namespaceId) =>
+      ipcRenderer.invoke("namespace:assign-folder", folderName, namespaceId),
+    /**
+     * Auto-detect namespaces from the knowledge graph.
+     * Call after file organization to keep namespaces up to date.
+     */
+    sync: () => ipcRenderer.invoke("namespace:sync"),
   },
 });
