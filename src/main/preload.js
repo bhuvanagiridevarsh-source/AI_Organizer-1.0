@@ -655,8 +655,20 @@ contextBridge.exposeInMainWorld("api", {
      * Pass an optional namespaceId to force a specific context scope.
      * Returns { enhanced, namespaceId?, namespaceName?, error? }.
      */
-    enhance: (userPrompt, namespaceId) =>
-      ipcRenderer.invoke("prompt:enhance", userPrompt, namespaceId || null),
+    enhance: (userPrompt, namespaceId, appliedConstraints) =>
+      ipcRenderer.invoke("prompt:enhance", userPrompt, namespaceId || null, appliedConstraints || []),
+    /**
+     * Get file-aware "Smart Starter" prompts built from the user's real
+     * folders and namespaces. Instant (no LLM). Returns { suggestions, hasContext }.
+     */
+    suggestions: () => ipcRenderer.invoke("prompt:suggestions"),
+    /**
+     * RAG agent: for a draft prompt, return the company it's about plus
+     * toggle-ready constraints (policies) and supporting passages, scoped to
+     * that company only. Returns { namespaceId, namespaceName, isEmployer,
+     * constraints[], passages[] }.
+     */
+    ragContext: (userPrompt) => ipcRenderer.invoke("prompt:rag-context", userPrompt),
   },
 
   // ── Namespace isolation ───────────────────────────────
@@ -676,5 +688,45 @@ contextBridge.exposeInMainWorld("api", {
      * Call after file organization to keep namespaces up to date.
      */
     sync: () => ipcRenderer.invoke("namespace:sync"),
+
+    // ── Employer identity ──
+    /** Current employer + scored candidates. { employerId, confirmed, suggestedId, candidates[] }. */
+    getEmployer: () => ipcRenderer.invoke("namespace:employer-get"),
+    /** Confirm which namespace is the employer. */
+    setEmployer: (namespaceId) => ipcRenderer.invoke("namespace:employer-set", namespaceId),
+  },
+
+  // ── User identity profile (the "who is this person" layer) ──
+  profile: {
+    /**
+     * Get the stored identity profile (role, projects, expertise, key people,
+     * writing style). Backs an inspect / "what the app knows" view.
+     * Returns the profile object (empty profile if none built yet).
+     */
+    get: () => ipcRenderer.invoke("profile:get"),
+    /**
+     * Lightweight status for a settings/transparency surface:
+     * { built, builtAt, stale, encryptedAtRest, counts, hasRole, hasEmployer }.
+     */
+    status: () => ipcRenderer.invoke("profile:status"),
+    /**
+     * Build/refresh the profile from local files, knowledge graph, namespaces
+     * and the confirmed employer. On-device only. Returns { ok, status, profile }.
+     */
+    build: () => ipcRenderer.invoke("profile:build"),
+    /** Wipe the profile completely. Returns { ok }. */
+    clear: () => ipcRenderer.invoke("profile:clear"),
+  },
+
+  // ── Policy memory (RAG agent's durable facts) ───────────
+  policy: {
+    /** List policy cards for a namespace. */
+    list: (namespaceId) => ipcRenderer.invoke("policy:list", namespaceId),
+    /** Add a manual policy card. */
+    add: (namespaceId, text, category) => ipcRenderer.invoke("policy:add", namespaceId, text, category),
+    /** Remove a policy card. */
+    remove: (namespaceId, policyId) => ipcRenderer.invoke("policy:remove", namespaceId, policyId),
+    /** (Re)learn policy cards for a namespace (defaults to employer). */
+    build: (namespaceId) => ipcRenderer.invoke("policy:build", namespaceId || null),
   },
 });

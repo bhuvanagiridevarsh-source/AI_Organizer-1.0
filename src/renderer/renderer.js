@@ -1661,6 +1661,37 @@ async function openSettings() {
     const n = await window.api.context.noiseFolders();
     $("capNoise").textContent = Array.isArray(n) ? n.join(", ") : String(n);
   } catch {}
+  renderProfileSummary();
+}
+
+// ── Identity profile: "what this app knows about you" ────────────
+function describeProfile(p) {
+  if (!p || (!p.builtAt) ) return "Nothing learned yet.";
+  const lines = [];
+  const id = p.identity || {};
+  if (id.role && id.employer) lines.push(`Role: ${id.role} at ${id.employer.label || id.employer}`);
+  else if (id.role) lines.push(`Role: ${id.role}`);
+  else if (id.employer) lines.push(`Works at: ${id.employer.label || id.employer}`);
+  if (id.industry) lines.push(`Industry: ${id.industry}`);
+  if (p.projects && p.projects.length) lines.push(`Active projects: ${p.projects.map(x => x.name).filter(Boolean).join(", ")}`);
+  if (p.expertise && p.expertise.length) lines.push(`Expertise: ${p.expertise.slice(0, 8).join(", ")}`);
+  if (p.keyPeople && p.keyPeople.length) lines.push(`Frequently works with: ${p.keyPeople.map(x => x.name).filter(Boolean).join(", ")}`);
+  const ws = p.writingStyle || {};
+  if (ws.tone || ws.formality) lines.push(`Writing style: ${[ws.formality, ws.tone].filter(Boolean).join(", ")}`);
+  if (lines.length === 0) return "Nothing learned yet.";
+  const when = p.builtAt ? new Date(p.builtAt).toLocaleDateString() : "";
+  return lines.join("\n") + (when ? `\n\n(last updated ${when})` : "");
+}
+
+async function renderProfileSummary() {
+  const el = $("profileSummary");
+  if (!el || !window.api || !window.api.profile) return;
+  try {
+    const p = await window.api.profile.get();
+    el.textContent = describeProfile(p);
+  } catch {
+    el.textContent = "Nothing learned yet.";
+  }
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -1738,6 +1769,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   deselectAllBtn.addEventListener("click", deselectAll);
   settingsBtn.addEventListener("click", openSettings);
   closeSettingsBtn.addEventListener("click", () => settingsOverlay.classList.add("hidden"));
+
+  // Identity profile controls
+  const buildProfileBtn = $("buildProfileBtn");
+  const clearProfileBtn = $("clearProfileBtn");
+  if (buildProfileBtn) {
+    buildProfileBtn.addEventListener("click", async () => {
+      const el = $("profileSummary");
+      buildProfileBtn.disabled = true;
+      const prev = buildProfileBtn.textContent;
+      buildProfileBtn.textContent = "Working…";
+      if (el) el.textContent = "Reading your files locally…";
+      try {
+        await window.api.profile.build();
+        await renderProfileSummary();
+      } catch {
+        if (el) el.textContent = "Couldn't refresh right now.";
+      } finally {
+        buildProfileBtn.disabled = false;
+        buildProfileBtn.textContent = prev;
+      }
+    });
+  }
+  if (clearProfileBtn) {
+    clearProfileBtn.addEventListener("click", async () => {
+      try { await window.api.profile.clear(); } catch {}
+      await renderProfileSummary();
+    });
+  }
 
   // ── Undo / Redo buttons ──
   const undoBtnEl = $("undoBtn");

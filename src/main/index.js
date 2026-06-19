@@ -227,7 +227,8 @@ const {
 
 // Chat + File Search
 const { handleChatMessage, quickSearch } = require("./services/ChatService");
-const { indexFile, searchFiles, getFolderSummary, getIndexSize, bulkReindex, needsFullTextUpgrade, upgradeIndexInBackground } = require("./services/SearchIndexService");
+const { indexFile, searchFiles, searchFilesHybrid, getAllEntries, getFolderSummary, getIndexSize, bulkReindex, needsFullTextUpgrade, upgradeIndexInBackground } = require("./services/SearchIndexService");
+const PolicyService = require("./services/PolicyService");
 
 // Enterprise Compliance (Work Mode only)
 const {
@@ -2614,7 +2615,7 @@ ipcMain.handle("chat:search", (_event, query) => {
 
 const NamespaceService = require("./services/NamespaceService");
 
-ipcMain.handle("prompt:enhance", async (_event, userPrompt, preferredNamespaceId) => {
+ipcMain.handle("prompt:enhance", async (_event, userPrompt, preferredNamespaceId, appliedConstraints) => {
   try {
     const LlamaService = require("./services/LlamaService");
     if (!LlamaService.isReady()) {
@@ -2650,9 +2651,39 @@ ipcMain.handle("prompt:enhance", async (_event, userPrompt, preferredNamespaceId
       }
     }
 
+    // Constraints the user explicitly approved (RAG policy toggles) — these are
+    // HARD requirements that must be honored in the rewrite. This is what turns
+    // "cookies for the office" into "gluten-free cookies for the office".
+    let constraintBlock = "";
+    const cleanConstraints = Array.isArray(appliedConstraints)
+      ? appliedConstraints.map(c => String(c || "").trim()).filter(Boolean)
+      : [];
+    if (cleanConstraints.length > 0) {
+      constraintBlock =
+        `\nMUST-FOLLOW constraints from the user's workplace (weave every one of these naturally into the rewrite — do not list them separately, do not drop any):\n` +
+        cleanConstraints.map(c => `- ${c}`).join("\n") + "\n";
+    }
+
+    // ── User identity block ──
+    // A compact, person-level "About the user" block (role, projects, expertise,
+    // writing style) inferred locally by UserProfileService. This is the missing
+    // context layer: it travels with every prompt regardless of namespace, so the
+    // downstream model knows WHO is asking — without leaking any company's
+    // confidential policies (those stay namespace-scoped above).
+    let profileBlock = "";
+    try {
+      const UserProfileService = require("./services/UserProfileService");
+      const block = UserProfileService.getProfileForPrompt();
+      if (block) profileBlock = "\n" + block;
+    } catch (e) {
+      console.warn("[prompt:enhance] profile block unavailable:", e?.message);
+    }
+
     const fullPrompt =
       `You are a personal prompt enhancer. Rewrite the user's prompt to be more specific, detailed, and context-aware using ONLY the context below. Do not invent facts. If context is irrelevant, just make the prompt clearer.` +
+      profileBlock +
       contextBlock +
+      constraintBlock +
       `\nUser's original prompt:\n${userPrompt}\n\nImproved prompt (output ONLY the rewritten prompt — no explanation, no preamble, no quotes):`;
 
     const result = await LlamaService.generate(fullPrompt, {
@@ -2669,6 +2700,273 @@ ipcMain.handle("prompt:enhance", async (_event, userPrompt, preferredNamespaceId
     console.error("[prompt:enhance] error:", err?.message);
     return { enhanced: null, error: err?.message ?? "Enhancement failed." };
   }
+});
+
+// ── Smart Starters: file-aware prompt suggestions ─────────────────────────────
+// Returns a few ready-to-use starter prompts grounded in the user's ACTUAL
+// folders and namespaces. This runs instantly off the knowledge graph — no LLM
+// call — so it's reliable even while the model is still loading. This is the
+// differentiator: suggestions no cloud tool can make, because they're built
+// from the user's local files. Purely additive; never throws to the renderer.
+function buildSmartStarters(kg, namespaces) {
+  const GENERIC_SKIP = new Set([
+    "needs review", "misc", "miscellaneous", "other", "uncategorized",
+    "untitled", "new folder", "downloads", "desktop", "documents",
+  ]);
+
+  // Real folder names, richest first (more terms ≈ more substantial folder)
+  const folders = kg && kg.folders ? Object.entries(kg.folders) : [];
+  const ranked = folders
+    .map(([name, g]) => ({ name, weight: (g && g.terms ? g.terms.length : 0) }))
+    .filter((f) => f.name && !GENERIC_SKIP.has(f.name.trim().toLowerCase()))
+    .sort((a, b) => b.weight - a.weight)
+    .map((f) => f.name);
+
+  const nsList = Array.isArray(namespaces) ? namespaces.filter((n) => n && n.label) : [];
+  const out = [];
+  const push = (text, scope) => {
+    if (text && !out.some((s) => s.text === text)) out.push({ text, scope: scope || "general" });
+  };
+
+  // Namespace-scoped starter (the strongest "your data" framing)
+  if (nsList.length > 0) {
+    const ns = nsList[0];
+    push(`Using only my ${ns.label} files, write a short status update on where things stand.`, ns.label);
+  }
+
+  // Single-folder starters
+  if (ranked[0]) {
+    push(`Summarize the key documents in my "${ranked[0]}" folder into a one-page brief.`, ranked[0]);
+  }
+  if (ranked[1]) {
+    push(`Turn the files in my "${ranked[1]}" folder into a prioritized to-do list.`, ranked[1]);
+  } else if (ranked[0]) {
+    push(`What should I do next with what's in my "${ranked[0]}" folder?`, ranked[0]);
+  }
+
+  // Two-folder comparison
+  if (ranked[0] && ranked[1]) {
+    push(`Compare what's in "${ranked[0]}" and "${ranked[1]}" and tell me what's missing or out of date.`, "cross-folder");
+  }
+
+  // Generic, still-useful fallbacks if the library is thin
+  push("Turn my rough notes into a structured plan with clear steps and deadlines.", "general");
+  push("Rewrite this to be clearer, more specific, and ready to send: (paste your draft)", "general");
+
+  return out.slice(0, 3);
+}
+
+ipcMain.handle("prompt:suggestions", async () => {
+  try {
+    const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
+    let namespaces = [];
+    try { namespaces = NamespaceService.listNamespaces() || []; } catch { /* none yet */ }
+    const suggestions = buildSmartStarters(kg, namespaces);
+    const hasContext = !!(kg && kg.folders && Object.keys(kg.folders).length > 0);
+    return { suggestions, hasContext };
+  } catch (err) {
+    console.error("[prompt:suggestions] error:", err?.message);
+    return { suggestions: [], hasContext: false };
+  }
+});
+
+// ── RAG agent: namespace-scoped retrieval for prompt enhancement ──────────────
+
+/** Count indexed files per namespace (folder → namespace via assignments). */
+function fileCountByNamespace() {
+  const counts = {};
+  try {
+    for (const e of getAllEntries()) {
+      const nsId = NamespaceService.getNamespaceForFolder(e.folder) || "unassigned";
+      counts[nsId] = (counts[nsId] || 0) + 1;
+    }
+  } catch { /* index empty */ }
+  return counts;
+}
+
+/** Indexed entries whose folder belongs to a given namespace. */
+function entriesForNamespace(namespaceId) {
+  if (!namespaceId) return [];
+  try {
+    return getAllEntries().filter(
+      (e) => NamespaceService.getNamespaceForFolder(e.folder) === namespaceId
+    );
+  } catch { return []; }
+}
+
+/**
+ * prompt:rag-context — the heart of the RAG agent.
+ *
+ * Given the user's draft prompt, it (1) decides which company the prompt is
+ * about — defaulting ambient "office" prompts to the confirmed employer and
+ * NEVER to a client/competitor; (2) pulls durable policy cards relevant to the
+ * prompt; (3) retrieves supporting file passages, scoped to that namespace only.
+ * Returns toggle-ready constraint candidates with source citations. The user
+ * approves which ones apply before the rewrite ("suggest as toggles first").
+ */
+ipcMain.handle("prompt:rag-context", async (_event, userPrompt) => {
+  const empty = { namespaceId: null, namespaceName: null, isEmployer: false, constraints: [], passages: [] };
+  try {
+    const prompt = String(userPrompt || "").trim();
+    if (!prompt) return empty;
+
+    // 1. Which company is this about?
+    let namespaceId = NamespaceService.detectPromptNamespace(prompt);
+    const employer = NamespaceService.getEmployerNamespace();
+    if (!namespaceId && employer) namespaceId = employer.id;
+    if (!namespaceId) return empty;
+
+    const ns = NamespaceService.listNamespaces().find(n => n.id === namespaceId) || null;
+    const isEmployer = !!(employer && employer.id === namespaceId);
+
+    // 2. Relevant durable policy cards (the high-signal constraints)
+    const policyCards = PolicyService.searchPolicies(namespaceId, prompt, 5);
+    const constraints = policyCards.map(p => ({
+      id: p.id,
+      text: p.text,
+      category: p.category || "general",
+      source: p.sourceFile || (p.manual ? "added by you" : "your files"),
+      kind: "policy",
+    }));
+
+    // 3. Supporting passages, scoped to this namespace only (no cross-company leak)
+    let passages = [];
+    try {
+      const hits = await searchFilesHybrid(prompt, 12);
+      passages = hits
+        .filter(h => NamespaceService.getNamespaceForFolder(h.folder) === namespaceId)
+        .slice(0, 3)
+        .map(h => ({
+          filename: h.filename,
+          folder: h.folder,
+          snippet: (h.snippet || h.fullText || "").slice(0, 200),
+        }));
+    } catch { /* retrieval unavailable */ }
+
+    return {
+      namespaceId,
+      namespaceName: ns ? ns.label : namespaceId,
+      isEmployer,
+      constraints,
+      passages,
+    };
+  } catch (err) {
+    console.error("[prompt:rag-context] error:", err?.message);
+    return empty;
+  }
+});
+
+// ── Employer identity IPC ─────────────────────────────────────────────────────
+
+/** Current employer + scored candidates so the UI can suggest/confirm one. */
+ipcMain.handle("namespace:employer-get", () => {
+  try {
+    const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
+    const { suggestedId, candidates } = NamespaceService.detectEmployerCandidate(kg, fileCountByNamespace());
+    const employer = NamespaceService.getEmployerNamespace();
+    return { employerId: employer ? employer.id : null, confirmed: !!employer, suggestedId, candidates };
+  } catch (err) {
+    console.error("[namespace:employer-get]", err?.message);
+    return { employerId: null, confirmed: false, suggestedId: null, candidates: [] };
+  }
+});
+
+/** Confirm which namespace is the employer. */
+ipcMain.handle("namespace:employer-set", (_event, namespaceId) => {
+  try {
+    const ns = NamespaceService.setEmployerNamespace(namespaceId);
+    return ns ? { ok: true, employer: ns } : { ok: false, error: "Namespace not found" };
+  } catch (err) {
+    return { ok: false, error: err?.message };
+  }
+});
+
+// ── Policy memory IPC ─────────────────────────────────────────────────────────
+
+/** List policy cards for a namespace. */
+ipcMain.handle("policy:list", (_event, namespaceId) => {
+  try { return PolicyService.getPolicies(namespaceId); }
+  catch { return []; }
+});
+
+/** Add a manual policy card. */
+ipcMain.handle("policy:add", (_event, namespaceId, text, category) => {
+  try { return PolicyService.addManualPolicy(namespaceId, text, category || "general"); }
+  catch (e) { return null; }
+});
+
+/** Remove a policy card. */
+ipcMain.handle("policy:remove", (_event, namespaceId, policyId) => {
+  try { return { ok: PolicyService.removePolicy(namespaceId, policyId) }; }
+  catch (e) { return { ok: false }; }
+});
+
+/**
+ * policy:build — (re)learn the policy cards for a namespace from its indexed
+ * files. Safe to call anytime; no-op if the model isn't ready or there are no
+ * files. Defaults to the employer namespace when none is given.
+ */
+ipcMain.handle("policy:build", async (_event, namespaceId) => {
+  try {
+    let nsId = namespaceId;
+    if (!nsId) {
+      const employer = NamespaceService.getEmployerNamespace();
+      nsId = employer ? employer.id : null;
+    }
+    if (!nsId) return { added: 0, total: 0, skipped: true, error: "No namespace" };
+    const entries = entriesForNamespace(nsId);
+    return await PolicyService.extractPoliciesForNamespace(nsId, entries);
+  } catch (err) {
+    console.error("[policy:build]", err?.message);
+    return { added: 0, total: 0, skipped: true, error: err?.message };
+  }
+});
+
+// ── User identity profile IPC ──────────────────────────────────────────────────
+// The identity layer ("who is this person"): role, active projects, expertise,
+// writing style — inferred locally and injected into prompt:enhance so the
+// downstream model knows who's asking. Invisible by default, inspectable/clearable
+// here so the user is never surprised by what the app has learned.
+
+const UserProfileService = require("./services/UserProfileService");
+
+/** Get the stored profile (for an inspect/"what the app knows" view). */
+ipcMain.handle("profile:get", () => {
+  try { return UserProfileService.getProfile(); }
+  catch (e) { console.error("[profile:get]", e?.message); return UserProfileService.emptyProfile(); }
+});
+
+/** Lightweight status: built?, when, stale?, encrypted-at-rest?, counts. */
+ipcMain.handle("profile:status", () => {
+  try { return UserProfileService.getStatus(); }
+  catch (e) { console.error("[profile:status]", e?.message); return { built: false }; }
+});
+
+/**
+ * Build (or refresh) the identity profile from local signals: indexed files,
+ * knowledge graph, namespaces, and the confirmed employer. On-device only.
+ */
+ipcMain.handle("profile:build", async () => {
+  try {
+    const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
+    let namespaces = [];
+    try { namespaces = NamespaceService.listNamespaces() || []; } catch { /* none */ }
+    const employer = (() => { try { return NamespaceService.getEmployerNamespace(); } catch { return null; } })();
+    let entries = [];
+    try { entries = getAllEntries() || []; } catch { /* index empty */ }
+
+    const profile = await UserProfileService.buildProfile({ entries, kg, employer, namespaces });
+    return { ok: true, status: UserProfileService.getStatus(), profile };
+  } catch (e) {
+    console.error("[profile:build]", e?.message);
+    return { ok: false, error: e?.message };
+  }
+});
+
+/** Wipe the profile (both encrypted + any plaintext copy). */
+ipcMain.handle("profile:clear", () => {
+  try { return { ok: UserProfileService.clearProfile() }; }
+  catch (e) { return { ok: false, error: e?.message }; }
 });
 
 // ── Namespace management IPC ──────────────────────────────────────────────────

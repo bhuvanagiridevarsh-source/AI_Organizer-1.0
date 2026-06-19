@@ -269,7 +269,22 @@ function detectPromptNamespace(prompt) {
     if (workWords.some(w => pl.includes(w))) return workNs[0];
   }
 
-  // 4. Personal keywords → personal namespace
+  // 4. Employer fallback for AMBIENT work/office prompts.
+  // This is the key to the "cookies for the office" case: the prompt names no
+  // company, but it's clearly about the workplace, so it resolves to the ONE
+  // company the user works at — never a client's or competitor's files.
+  const employerId = manifest.primaryEmployerId;
+  if (employerId && namespaces[employerId]) {
+    const ambientWork = [
+      'office', 'work', 'team', 'colleague', 'coworker', 'co-worker', 'desk',
+      'meeting', 'standup', 'stand-up', 'party', 'lunch', 'potluck', 'onboarding',
+      'manager', 'boss', 'hr', 'company', 'workplace', 'staff', 'department',
+      'all-hands', 'offsite', 'off-site', 'colleagues',
+    ];
+    if (ambientWork.some(w => pl.includes(w))) return employerId;
+  }
+
+  // 5. Personal keywords → personal namespace
   const personalWords = ['personal', 'home', 'family', 'hobby', 'my ', 'i '];
   if (personalWords.some(w => pl.includes(w)) && namespaces['personal']) {
     return 'personal';
@@ -283,6 +298,116 @@ function getFolderAssignments() {
   return loadManifest().folderAssignments || {};
 }
 
+// ── Employer identity ─────────────────────────────────────────────────────────
+// The "employer" is the ONE namespace that represents the company the user
+// actually works at. It is what ambient work prompts ("cookies for the office")
+// resolve to — as opposed to client/competitor files that also live in the
+// library. This is the gate that decides which company's policies are allowed
+// to influence a generic prompt.
+
+const VALID_ROLES = new Set(['employer', 'client', 'reference', 'personal', 'unknown']);
+
+// Keywords in a namespace's folder terms that signal it's an EMPLOYER
+// (not a client or a reference dump) — HR/payroll/onboarding artifacts.
+const EMPLOYER_SIGNAL_TERMS = [
+  'handbook', 'payroll', 'payslip', 'paystub', 'onboarding', 'employee',
+  'benefits', 'offer letter', 'w2', 'w-2', 'timesheet', 'pto', 'hr',
+  'performance review', 'org chart', '401k', 'open enrollment', 'expense policy',
+  'code of conduct', 'workplace', 'staff', 'team',
+];
+
+/** Set the role of a namespace (employer/client/reference/personal/unknown). */
+function setNamespaceRole(namespaceId, role) {
+  if (!VALID_ROLES.has(role)) return null;
+  const manifest = loadManifest();
+  const ns = manifest.namespaces[namespaceId];
+  if (!ns) return null;
+  ns.role = role;
+  ns.updatedAt = new Date().toISOString();
+  saveManifest(manifest);
+  return ns;
+}
+
+/** Designate a namespace as THE employer. Demotes any previous employer to "client". */
+function setEmployerNamespace(namespaceId) {
+  const manifest = loadManifest();
+  if (!manifest.namespaces[namespaceId]) return null;
+  // Demote a previous employer so there is always exactly one.
+  if (manifest.primaryEmployerId && manifest.namespaces[manifest.primaryEmployerId]
+      && manifest.primaryEmployerId !== namespaceId) {
+    manifest.namespaces[manifest.primaryEmployerId].role = 'client';
+  }
+  manifest.primaryEmployerId = namespaceId;
+  manifest.namespaces[namespaceId].role = 'employer';
+  manifest.namespaces[namespaceId].updatedAt = new Date().toISOString();
+  saveManifest(manifest);
+  return manifest.namespaces[namespaceId];
+}
+
+/** Get the confirmed employer namespace, or null if the user hasn't set one. */
+function getEmployerNamespace() {
+  const manifest = loadManifest();
+  const id = manifest.primaryEmployerId;
+  if (id && manifest.namespaces[id]) return manifest.namespaces[id];
+  return null;
+}
+
+/**
+ * detectEmployerCandidate — score every non-personal namespace on how likely it
+ * is to be the user's employer, so the UI can pre-suggest one for confirmation.
+ *
+ * Signal = file volume (your employer usually dominates your work files) +
+ * presence of HR/payroll/onboarding artifacts (only an employer has those).
+ *
+ * fileCountByNs: optional { [nsId]: number } of indexed files per namespace.
+ * Returns { suggestedId, candidates: [{ id, label, color, role, fileCount, score, signals }] }.
+ */
+function detectEmployerCandidate(kg, fileCountByNs = {}) {
+  const manifest = loadManifest();
+  const namespaces = manifest.namespaces || {};
+  const assignments = manifest.folderAssignments || {};
+
+  // Map each namespace → its folder names
+  const foldersByNs = {};
+  for (const [folder, nsId] of Object.entries(assignments)) {
+    (foldersByNs[nsId] = foldersByNs[nsId] || []).push(folder);
+  }
+
+  const candidates = [];
+  for (const [nsId, ns] of Object.entries(namespaces)) {
+    if (nsId === 'personal') continue;
+
+    const folders = foldersByNs[nsId] || [];
+    const fileCount = fileCountByNs[nsId] != null ? fileCountByNs[nsId] : folders.length;
+
+    // Gather this namespace's terms from the KG to look for employer signals
+    const signals = [];
+    if (kg && kg.folders) {
+      const terms = [];
+      for (const f of folders) {
+        const match = Object.keys(kg.folders).find(k => k.toLowerCase() === f.toLowerCase());
+        if (match) terms.push(...((kg.folders[match]?.terms) || []));
+      }
+      const termBlob = terms.join(' ').toLowerCase() + ' ' + folders.join(' ').toLowerCase();
+      for (const sig of EMPLOYER_SIGNAL_TERMS) {
+        if (termBlob.includes(sig)) signals.push(sig);
+      }
+    }
+
+    // Score: volume is the base, each HR-style signal is a strong multiplier.
+    const score = fileCount + signals.length * 8 + (ns.role === 'employer' ? 100 : 0);
+    candidates.push({
+      id: nsId, label: ns.label, color: ns.color,
+      role: ns.role || 'unknown', fileCount, score, signals,
+    });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const suggestedId = manifest.primaryEmployerId
+    || (candidates[0] ? candidates[0].id : null);
+  return { suggestedId, candidates };
+}
+
 module.exports = {
   listNamespaces,
   upsertNamespace,
@@ -292,4 +417,8 @@ module.exports = {
   getContextForNamespace,
   detectPromptNamespace,
   getFolderAssignments,
+  setNamespaceRole,
+  setEmployerNamespace,
+  getEmployerNamespace,
+  detectEmployerCandidate,
 };

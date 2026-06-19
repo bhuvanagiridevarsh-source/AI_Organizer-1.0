@@ -1933,6 +1933,145 @@ html.show-kanji .footer-kanji { display: block; }
     .pe-textarea::placeholder { color: rgba(91,79,232,0.35); }
     html.dark .pe-textarea::placeholder { color: rgba(255,255,255,0.2); }
 
+    /* Smart Starters — file-aware suggestion chips */
+    .pe-starters { display: flex; flex-direction: column; gap: 8px; }
+    .pe-starters-head {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--ink-3, #888);
+    }
+    html.dark .pe-starters-head { color: rgba(255,255,255,0.42); }
+    .pe-starters-spark { color: #7C3AED; font-size: 0.8rem; }
+    html.dark .pe-starters-spark { color: #a78bfa; }
+    .pe-starters-list { display: flex; flex-direction: column; gap: 7px; }
+    .pe-starter {
+      text-align: left; width: 100%; box-sizing: border-box;
+      background: rgba(91,79,232,0.05);
+      border: 1px solid rgba(91,79,232,0.18);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-family: inherit; font-size: 0.78rem; line-height: 1.4;
+      color: var(--ink); cursor: pointer;
+      display: flex; align-items: flex-start; gap: 9px;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .pe-starter:hover {
+      background: rgba(91,79,232,0.11);
+      border-color: var(--seal);
+      transform: translateY(-1px);
+    }
+    .pe-starter:active { transform: translateY(0); }
+    html.dark .pe-starter {
+      background: rgba(167,139,250,0.07);
+      border-color: rgba(167,139,250,0.18);
+      color: rgba(255,255,255,0.85);
+    }
+    html.dark .pe-starter:hover { background: rgba(167,139,250,0.14); border-color: #a78bfa; }
+    .pe-starter-arrow { color: var(--seal); flex-shrink: 0; opacity: 0.5; margin-top: 1px; }
+    html.dark .pe-starter-arrow { color: #a78bfa; }
+    .pe-starter:hover .pe-starter-arrow { opacity: 1; }
+    .pe-starter-scope {
+      display: inline-block; margin-top: 4px;
+      font-size: 0.62rem; font-weight: 600; letter-spacing: 0.03em;
+      color: var(--seal); opacity: 0.7;
+    }
+    html.dark .pe-starter-scope { color: #a78bfa; }
+
+    /* Employer identity banner */
+    .pe-employer {
+      background: rgba(13,148,136,0.06);
+      border: 1px solid rgba(13,148,136,0.22);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    html.dark .pe-employer { background: rgba(13,148,136,0.1); border-color: rgba(45,212,191,0.25); }
+    .pe-employer-confirmed { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--ink); }
+    html.dark .pe-employer-confirmed { color: rgba(255,255,255,0.85); }
+    .pe-employer-icon { font-size: 0.95rem; }
+    .pe-employer-text { flex: 1; }
+    .pe-employer-text strong { color: #0D9488; }
+    html.dark .pe-employer-text strong { color: #2dd4bf; }
+    .pe-employer-change {
+      background: none; border: none; cursor: pointer;
+      font-size: 0.7rem; font-weight: 600; color: #0D9488;
+      text-decoration: underline; padding: 2px 4px;
+    }
+    html.dark .pe-employer-change { color: #2dd4bf; }
+    .pe-employer-q { font-size: 0.74rem; color: var(--ink); margin-bottom: 8px; line-height: 1.4; }
+    html.dark .pe-employer-q { color: rgba(255,255,255,0.75); }
+    .pe-employer-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pe-emp-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 999px; padding: 5px 11px;
+      font-family: inherit; font-size: 0.74rem; color: var(--ink);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .pe-emp-pill:hover { border-color: #0D9488; background: rgba(13,148,136,0.08); }
+    html.dark .pe-emp-pill { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.85); }
+    .pe-emp-pill-count { font-size: 0.64rem; opacity: 0.6; }
+    .pe-emp-pill-badge {
+      font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+      color: #0D9488; background: rgba(13,148,136,0.12); border-radius: 4px; padding: 1px 5px;
+    }
+    html.dark .pe-emp-pill-badge { color: #2dd4bf; background: rgba(45,212,191,0.16); }
+
+    /* RAG constraint toggles */
+    .pe-constraints {
+      background: rgba(217,119,6,0.05);
+      border: 1px solid rgba(217,119,6,0.22);
+      border-radius: 10px; padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 9px;
+    }
+    html.dark .pe-constraints { background: rgba(217,119,6,0.08); border-color: rgba(251,191,36,0.22); }
+    .pe-constraints-head {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.72rem; font-weight: 700; color: var(--ink);
+    }
+    html.dark .pe-constraints-head { color: rgba(255,255,255,0.82); }
+    .pe-constraints-list { display: flex; flex-direction: column; gap: 6px; }
+    .pe-constraint {
+      display: flex; align-items: flex-start; gap: 9px;
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 8px; padding: 8px 10px; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+    }
+    html.dark .pe-constraint { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+    .pe-constraint.on { border-color: #D97706; background: rgba(217,119,6,0.07); }
+    html.dark .pe-constraint.on { border-color: #fbbf24; background: rgba(251,191,36,0.1); }
+    .pe-constraint.off { opacity: 0.5; }
+    .pe-constraint-check {
+      width: 16px; height: 16px; border-radius: 5px; flex-shrink: 0; margin-top: 1px;
+      border: 1.5px solid #D97706; display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; color: #fff; background: transparent; line-height: 1;
+    }
+    .pe-constraint.on .pe-constraint-check { background: #D97706; }
+    html.dark .pe-constraint.on .pe-constraint-check { background: #fbbf24; border-color: #fbbf24; color: #1a1206; }
+    .pe-constraint-body { display: flex; flex-direction: column; gap: 2px; }
+    .pe-constraint-text { font-size: 0.78rem; line-height: 1.35; color: var(--ink); }
+    html.dark .pe-constraint-text { color: rgba(255,255,255,0.88); }
+    .pe-constraint-src { font-size: 0.64rem; color: var(--ink-3,#888); }
+    html.dark .pe-constraint-src { color: rgba(255,255,255,0.4); }
+    .pe-constraints-hint { font-size: 0.66rem; color: var(--ink-3,#888); }
+    html.dark .pe-constraints-hint { color: rgba(255,255,255,0.4); }
+    .pe-constraints-spark { font-size: 0.85rem; }
+
+    /* Grounding receipt under the result */
+    .pe-grounding {
+      background: rgba(13,148,136,0.05);
+      border: 1px solid rgba(13,148,136,0.2);
+      border-radius: 10px; padding: 10px 13px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    html.dark .pe-grounding { background: rgba(13,148,136,0.09); border-color: rgba(45,212,191,0.22); }
+    .pe-grounding-head { font-size: 0.72rem; font-weight: 700; color: #0D9488; }
+    html.dark .pe-grounding-head { color: #2dd4bf; }
+    .pe-grounding-list { display: flex; flex-direction: column; gap: 4px; }
+    .pe-grounding-item { font-size: 0.72rem; color: var(--ink); display: flex; gap: 7px; align-items: flex-start; line-height: 1.35; }
+    html.dark .pe-grounding-item { color: rgba(255,255,255,0.82); }
+    .pe-grounding-item .g-src { color: var(--ink-3,#888); font-size: 0.64rem; }
+    html.dark .pe-grounding-item .g-src { color: rgba(255,255,255,0.4); }
+
     .pe-enhance-btn {
       width: 100%;
       background: linear-gradient(135deg, #5B4FE8, #7C3AED);
@@ -3383,6 +3522,19 @@ html.show-kanji .footer-kanji { display: block; }
         </div>
       </div>
 
+      <!-- ── What this app knows about you (identity profile) ─────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">What this app knows about you</div>
+        <div style="font-size:10px;color:#666;font-weight:400;margin-bottom:8px;line-height:1.4;">
+          Inferred locally from your files and used only to improve your prompts. It never leaves this device and is encrypted at rest. You can refresh or erase it anytime.
+        </div>
+        <div id="profileSummary" style="font-size:11px;color:#bbb;font-weight:400;line-height:1.5;white-space:pre-wrap;">Nothing learned yet.</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-primary btn-sm" id="buildProfileBtn">Refresh what's known</button>
+          <button class="btn btn-danger btn-sm" id="clearProfileBtn">Erase</button>
+        </div>
+      </div>
+
       <div class="s-actions">
         <button class="btn btn-danger btn-sm" id="clearLearningBtn">Clear Learning</button>
         <button class="btn btn-primary btn-sm" id="refreshFpBtn">Refresh Fingerprints</button>
@@ -3508,6 +3660,19 @@ html.show-kanji .footer-kanji { display: block; }
         <span>Browser integration is coming soon — sorry for the inconvenience. For now, write your prompt here and copy the enhanced version into any AI tool.</span>
       </div>
 
+      <!-- Employer identity — which company "the office" means for ambient prompts -->
+      <div class="pe-employer" id="peEmployer" style="display:none;">
+        <div class="pe-employer-confirmed" id="peEmployerConfirmed" style="display:none;">
+          <span class="pe-employer-icon">🏢</span>
+          <span class="pe-employer-text">Working at <strong id="peEmployerName">—</strong></span>
+          <button class="pe-employer-change" id="peEmployerChange">change</button>
+        </div>
+        <div class="pe-employer-setup" id="peEmployerSetup" style="display:none;">
+          <div class="pe-employer-q">Which company do you work at? This decides whose policies apply to “office” prompts.</div>
+          <div class="pe-employer-pills" id="peEmployerPills"></div>
+        </div>
+      </div>
+
       <!-- Input -->
       <div>
         <div class="pe-label">Your prompt</div>
@@ -3519,17 +3684,36 @@ html.show-kanji .footer-kanji { display: block; }
         ></textarea>
       </div>
 
+      <!-- Smart Starters — file-aware suggestions drawn from the user's real folders -->
+      <div class="pe-starters" id="peStarters" style="display:none;">
+        <div class="pe-starters-head">
+          <span class="pe-starters-spark">✦</span>
+          <span>Smart starters — built from your files</span>
+        </div>
+        <div class="pe-starters-list" id="peStartersList"></div>
+      </div>
+
       <!-- Namespace scope selector -->
       <div id="peNamespaceRow" style="display:none; align-items:center; gap:8px; flex-wrap:wrap;">
         <span style="font-size:0.7rem;color:var(--ink-3,#888);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Context scope</span>
         <div id="peNamespacePills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
       </div>
 
+      <!-- RAG constraints — found in the user's files, opt-in before rewriting -->
+      <div class="pe-constraints" id="peConstraints" style="display:none;">
+        <div class="pe-constraints-head">
+          <span class="pe-constraints-spark">🛡️</span>
+          <span id="peConstraintsTitle">From your files — keep what applies</span>
+        </div>
+        <div class="pe-constraints-list" id="peConstraintsList"></div>
+        <div class="pe-constraints-hint">These get woven into your rewrite. Untoggle anything that doesn’t apply.</div>
+      </div>
+
       <button class="pe-enhance-btn" id="peEnhanceBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
         </svg>
-        Enhance with my context
+        <span id="peEnhanceBtnLabel">Enhance with my context</span>
       </button>
 
       <!-- Spinner -->
@@ -3548,6 +3732,12 @@ html.show-kanji .footer-kanji { display: block; }
           <button class="pe-copy-btn" id="peCopyBtn">Copy</button>
         </div>
         <div class="pe-result-text" id="peResultText"></div>
+      </div>
+
+      <!-- Grounding: which workplace constraints were applied + source files -->
+      <div class="pe-grounding" id="peGrounding" style="display:none;">
+        <div class="pe-grounding-head">✓ Grounded in your <span id="peGroundingNs">workplace</span> context</div>
+        <div class="pe-grounding-list" id="peGroundingList"></div>
       </div>
 
       <!-- Which namespace was used -->

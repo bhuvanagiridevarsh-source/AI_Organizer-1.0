@@ -182,8 +182,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const nsUsedBadge  = document.getElementById('peNsUsedBadge');
     const nsUsedDot    = document.getElementById('peNsUsedDot');
     const nsUsedLabel  = document.getElementById('peNsUsedLabel');
+    const startersBox  = document.getElementById('peStarters');
+    const startersList = document.getElementById('peStartersList');
+    // Employer identity
+    const employerBox       = document.getElementById('peEmployer');
+    const employerConfirmed = document.getElementById('peEmployerConfirmed');
+    const employerSetup     = document.getElementById('peEmployerSetup');
+    const employerName      = document.getElementById('peEmployerName');
+    const employerChange    = document.getElementById('peEmployerChange');
+    const employerPills     = document.getElementById('peEmployerPills');
+    // RAG constraints + grounding
+    const constraintsBox    = document.getElementById('peConstraints');
+    const constraintsList   = document.getElementById('peConstraintsList');
+    const constraintsTitle  = document.getElementById('peConstraintsTitle');
+    const enhanceLabel      = document.getElementById('peEnhanceBtnLabel');
+    const groundingBox      = document.getElementById('peGrounding');
+    const groundingList     = document.getElementById('peGroundingList');
+    const groundingNs       = document.getElementById('peGroundingNs');
 
     if (!panel || !railBtn) return;
+
+    // RAG two-step state
+    let constraintsStaged   = false;
+    let stagedNamespace     = null;
+    let stagedNamespaceName = null;
+    let lastEmployerInfo    = null;
 
     // Track which namespace pill the user has pinned (null = auto-detect)
     let selectedNamespaceId = null;
@@ -260,6 +283,223 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // ── Smart Starters — file-aware suggestion chips ─────────────────────────
+
+    async function loadStarters() {
+      if (!startersBox || !startersList) return;
+      try {
+        if (!window.api?.promptEnhancer?.suggestions) { startersBox.style.display = 'none'; return; }
+        const res = await window.api.promptEnhancer.suggestions();
+        renderStarters(res && res.suggestions ? res.suggestions : []);
+      } catch {
+        startersBox.style.display = 'none';
+      }
+    }
+
+    function renderStarters(list) {
+      if (!startersBox || !startersList) return;
+      startersList.innerHTML = '';
+      if (!list || list.length === 0) { startersBox.style.display = 'none'; return; }
+
+      for (const item of list) {
+        const text  = (item && item.text) || '';
+        const scope = (item && item.scope) || '';
+        if (!text) continue;
+
+        const btn = document.createElement('button');
+        btn.className = 'pe-starter';
+        btn.type = 'button';
+
+        const arrow = document.createElement('span');
+        arrow.className = 'pe-starter-arrow';
+        arrow.textContent = '↳';
+
+        const body = document.createElement('span');
+        const label = document.createElement('span');
+        label.textContent = text;
+        body.appendChild(label);
+
+        if (scope && scope !== 'general') {
+          const sc = document.createElement('span');
+          sc.className = 'pe-starter-scope';
+          sc.textContent = scope === 'cross-folder' ? 'across folders' : scope;
+          body.appendChild(document.createElement('br'));
+          body.appendChild(sc);
+        }
+
+        btn.appendChild(arrow);
+        btn.appendChild(body);
+        btn.addEventListener('click', () => {
+          if (!input) return;
+          input.value = text;
+          input.focus();
+          input.setSelectionRange(text.length, text.length);
+        });
+
+        startersList.appendChild(btn);
+      }
+      startersBox.style.display = 'flex';
+    }
+
+    // ── Employer identity ────────────────────────────────────────────────────
+
+    async function loadEmployer() {
+      if (!employerBox) return;
+      try {
+        if (!window.api?.namespace?.getEmployer) { employerBox.style.display = 'none'; return; }
+        const info = await window.api.namespace.getEmployer();
+        lastEmployerInfo = info;
+        renderEmployer(info, false);
+      } catch {
+        employerBox.style.display = 'none';
+      }
+    }
+
+    function renderEmployer(info, forceSetup) {
+      if (!employerBox || !employerConfirmed || !employerSetup) return;
+      if (!info || !Array.isArray(info.candidates) || info.candidates.length === 0) {
+        employerBox.style.display = 'none';
+        return;
+      }
+      employerBox.style.display = 'block';
+
+      if (info.confirmed && info.employerId && !forceSetup) {
+        const emp = info.candidates.find(c => c.id === info.employerId);
+        if (employerName) employerName.textContent = emp ? emp.label : info.employerId;
+        employerConfirmed.style.display = 'flex';
+        employerSetup.style.display = 'none';
+      } else {
+        employerConfirmed.style.display = 'none';
+        employerSetup.style.display = 'block';
+        renderEmployerPills(info);
+      }
+    }
+
+    function renderEmployerPills(info) {
+      if (!employerPills) return;
+      employerPills.innerHTML = '';
+      for (const c of info.candidates) {
+        const pill = document.createElement('button');
+        pill.className = 'pe-emp-pill';
+        pill.type = 'button';
+
+        const label = document.createElement('span');
+        label.textContent = c.label;
+        pill.appendChild(label);
+
+        if (typeof c.fileCount === 'number' && c.fileCount > 0) {
+          const cnt = document.createElement('span');
+          cnt.className = 'pe-emp-pill-count';
+          cnt.textContent = c.fileCount + (c.fileCount === 1 ? ' file' : ' files');
+          pill.appendChild(cnt);
+        }
+        if (c.id === info.suggestedId) {
+          const badge = document.createElement('span');
+          badge.className = 'pe-emp-pill-badge';
+          badge.textContent = 'likely';
+          pill.appendChild(badge);
+        }
+
+        pill.addEventListener('click', async () => {
+          try { await window.api.namespace.setEmployer(c.id); } catch {}
+          // Learn this employer's policies in the background (no-op if model busy)
+          try { window.api.policy && window.api.policy.build(c.id); } catch {}
+          await loadEmployer();
+        });
+        employerPills.appendChild(pill);
+      }
+    }
+
+    if (employerChange) {
+      employerChange.addEventListener('click', () => {
+        if (lastEmployerInfo) renderEmployer(lastEmployerInfo, true);
+      });
+    }
+
+    // ── RAG constraints (opt-in toggles) ─────────────────────────────────────
+
+    function setEnhanceLabel(text) { if (enhanceLabel) enhanceLabel.textContent = text; }
+
+    function hideConstraints() {
+      if (constraintsBox) constraintsBox.style.display = 'none';
+      if (constraintsList) constraintsList.innerHTML = '';
+    }
+
+    function resetStaging() {
+      constraintsStaged = false;
+      stagedNamespace = null;
+      stagedNamespaceName = null;
+      setEnhanceLabel('Enhance with my context');
+      hideConstraints();
+    }
+
+    function renderConstraints(ctx) {
+      if (!constraintsBox || !constraintsList) return;
+      constraintsList.innerHTML = '';
+      if (constraintsTitle) {
+        const where = ctx.namespaceName ? `your ${ctx.namespaceName} files` : 'your files';
+        constraintsTitle.textContent = `From ${where} — keep what applies`;
+      }
+      for (const c of ctx.constraints) {
+        const row = document.createElement('div');
+        row.className = 'pe-constraint on';
+        row.dataset.text = c.text;
+
+        const check = document.createElement('div');
+        check.className = 'pe-constraint-check';
+        check.textContent = '✓';
+
+        const body = document.createElement('div');
+        body.className = 'pe-constraint-body';
+        const txt = document.createElement('div');
+        txt.className = 'pe-constraint-text';
+        txt.textContent = c.text;
+        body.appendChild(txt);
+        if (c.source) {
+          const src = document.createElement('div');
+          src.className = 'pe-constraint-src';
+          src.textContent = '↳ ' + c.source;
+          body.appendChild(src);
+        }
+
+        row.appendChild(check);
+        row.appendChild(body);
+        row.addEventListener('click', () => {
+          const on = row.classList.toggle('on');
+          row.classList.toggle('off', !on);
+          check.textContent = on ? '✓' : '';
+        });
+        constraintsList.appendChild(row);
+      }
+      constraintsBox.style.display = 'flex';
+    }
+
+    function getKeptConstraints() {
+      if (!constraintsList) return [];
+      return Array.from(constraintsList.querySelectorAll('.pe-constraint.on'))
+        .map(row => ({ text: row.dataset.text }))
+        .filter(c => c.text);
+    }
+
+    function renderGrounding(nsName, kept) {
+      if (!groundingBox || !groundingList) return;
+      if (!kept || kept.length === 0) { groundingBox.style.display = 'none'; return; }
+      if (groundingNs) groundingNs.textContent = nsName || 'workplace';
+      groundingList.innerHTML = '';
+      for (const k of kept) {
+        const item = document.createElement('div');
+        item.className = 'pe-grounding-item';
+        const dot = document.createElement('span');
+        dot.textContent = '•';
+        const txt = document.createElement('span');
+        txt.textContent = k.text;
+        item.appendChild(dot);
+        item.appendChild(txt);
+        groundingList.appendChild(item);
+      }
+      groundingBox.style.display = 'flex';
+    }
+
     // ── Panel open/close ─────────────────────────────────────────────────────
 
     function openPanel() {
@@ -268,8 +508,11 @@ document.addEventListener('DOMContentLoaded', () => {
       railBtn.classList.add('active');
       const chatPanel = document.getElementById('chatPanel');
       if (chatPanel) chatPanel.classList.remove('open');
-      // Refresh namespace list every time panel opens
+      // Refresh namespace list + file-aware starters + employer every time it opens
       loadNamespaces();
+      loadStarters();
+      loadEmployer();
+      resetStaging();
     }
 
     function closePanel() {
@@ -285,9 +528,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Enhance logic ────────────────────────────────────────────────────────
 
-    function setLoading(loading) {
+    function setLoading(loading, message) {
       enhanceBtn.disabled = loading;
       spinner.classList.toggle('visible', loading);
+      if (message) {
+        const span = spinner.querySelector('span');
+        if (span) span.textContent = message;
+      }
     }
 
     function showError(msg) {
@@ -318,28 +565,68 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    if (enhanceBtn) {
-      enhanceBtn.addEventListener('click', async () => {
-        const prompt = (input.value || '').trim();
-        if (!prompt) { showError('Please type a prompt first.'); return; }
+    async function runEnhance() {
+      const prompt = (input.value || '').trim();
+      if (!prompt) { showError('Please type a prompt first.'); return; }
 
-        setLoading(true);
+      // ── STEP 1: gather RAG constraints from the user's files (toggles first) ──
+      if (!constraintsStaged) {
         errorEl.classList.remove('visible');
         resultBox.classList.remove('visible');
+        if (groundingBox) groundingBox.style.display = 'none';
         if (nsUsedBadge) nsUsedBadge.classList.remove('visible');
 
-        try {
-          const res = await window.api.promptEnhancer.enhance(prompt, selectedNamespaceId);
-          if (res.error) {
-            showError(res.error);
-          } else {
-            showResult(res.enhanced, res.namespaceId, res.namespaceName);
-          }
-        } catch (err) {
-          showError(err?.message || 'Something went wrong. Please try again.');
-        } finally {
+        let ctx = null;
+        if (window.api?.promptEnhancer?.ragContext) {
+          setLoading(true, 'Checking your files for relevant context…');
+          try { ctx = await window.api.promptEnhancer.ragContext(prompt); } catch { ctx = null; }
           setLoading(false);
         }
+
+        if (ctx && Array.isArray(ctx.constraints) && ctx.constraints.length > 0) {
+          stagedNamespace = ctx.namespaceId || null;
+          stagedNamespaceName = ctx.namespaceName || null;
+          renderConstraints(ctx);
+          constraintsStaged = true;
+          setEnhanceLabel('Rewrite with these →');
+          return; // let the user review the toggles, then click again
+        }
+
+        // No constraints found → fall through to a direct rewrite
+        stagedNamespace = ctx ? (ctx.namespaceId || null) : null;
+        stagedNamespaceName = ctx ? (ctx.namespaceName || null) : null;
+      }
+
+      // ── STEP 2: rewrite, weaving in only the constraints the user kept ──
+      const kept = getKeptConstraints();
+      const ns = selectedNamespaceId || stagedNamespace || null;
+      setLoading(true, 'Enhancing your prompt…');
+      try {
+        const res = await window.api.promptEnhancer.enhance(prompt, ns, kept.map(k => k.text));
+        if (res.error) {
+          showError(res.error);
+        } else {
+          showResult(res.enhanced, res.namespaceId, res.namespaceName);
+          renderGrounding(stagedNamespaceName || res.namespaceName, kept);
+        }
+      } catch (err) {
+        showError(err?.message || 'Something went wrong. Please try again.');
+      } finally {
+        setLoading(false);
+        constraintsStaged = false;
+        setEnhanceLabel('Enhance with my context');
+        hideConstraints();
+      }
+    }
+
+    if (enhanceBtn) {
+      enhanceBtn.addEventListener('click', runEnhance);
+    }
+
+    // Editing the prompt invalidates any staged constraints from the old prompt
+    if (input) {
+      input.addEventListener('input', () => {
+        if (constraintsStaged) resetStaging();
       });
     }
 
