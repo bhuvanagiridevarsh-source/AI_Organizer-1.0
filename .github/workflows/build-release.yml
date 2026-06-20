@@ -65,7 +65,7 @@ jobs:
         # On a real Windows runner we can use nsis — no wine needed.
         # --publish never: build only; the "release" job uploads. compile first
         # so the TypeScript is transpiled before packaging.
-        run: npm run compile && npx electron-builder --win --x64 --publish never --config.win.signAndEditExecutable=false --config.win.target[0]=nsis --config.win.target[1]=zip
+        run: npm run compile && npx electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

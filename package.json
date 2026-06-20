@@ -1,6 +1,6 @@
 {
   "name": "system-janitor",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "AI-powered file organizer that runs entirely on your device",
   "author": "Devarsh Bhuvanagiri <bhuvanagiridevarsh@gmail.com>",
   "main": "src/main/index.js",
