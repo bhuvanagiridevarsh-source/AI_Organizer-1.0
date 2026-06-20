@@ -20,7 +20,7 @@ const { app }  = require("electron");
 // These must match LlamaService.ts constants
 const MODEL_FILE         = "ai-organizer-v2-Q4_K_M.gguf";
 const MODEL_DOWNLOAD_URL = process.env.MODEL_DOWNLOAD_URL ||
-  "https://github.com/bhuvanagiridevarsh-source/AI_Organizer/releases/download/v2.0/" +
+  "https://github.com/bhuvanagiridevarsh-source/AI_Organizer-1.0/releases/download/v2.0/" +
   MODEL_FILE;
 
 function getModelsDir() {

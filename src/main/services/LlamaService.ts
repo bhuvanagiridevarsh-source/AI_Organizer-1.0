@@ -26,7 +26,7 @@ export const MODEL_FILE = "ai-organizer-v2-Q4_K_M.gguf";
 
 /** Public download URL — host this on your CDN / GitHub release. */
 export const MODEL_DOWNLOAD_URL =
-  "https://github.com/bhuvanagiridevarsh-source/AI_Organizer/releases/download/v2.0/" +
+  "https://github.com/bhuvanagiridevarsh-source/AI_Organizer-1.0/releases/download/v2.0/" +
   MODEL_FILE;
 
 /** Context window sizes. */

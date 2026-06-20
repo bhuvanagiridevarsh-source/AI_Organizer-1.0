@@ -53,7 +53,7 @@ asarUnpack:
 publish:
   provider: github
   owner: bhuvanagiridevarsh-source
-  repo: AI_Organizer
+  repo: AI_Organizer-1.0
 
 # ── Extra resources bundled into the installer ──
 # No Ollama binary needed — node-llama-cpp handles AI inference directly.
