@@ -669,6 +669,14 @@ contextBridge.exposeInMainWorld("api", {
      * constraints[], passages[] }.
      */
     ragContext: (userPrompt) => ipcRenderer.invoke("prompt:rag-context", userPrompt),
+    /**
+     * One-call end-to-end workflow: ensures the local identity profile exists,
+     * detects the namespace, RAG-retrieves the specifics relevant to this prompt
+     * (policy cards + file passages, namespace-scoped), and rewrites. Returns
+     * { enhanced, namespaceId, namespaceName, used:{ profile, passages[], constraints[] }, error? }.
+     */
+    enhanceSmart: (userPrompt, namespaceId) =>
+      ipcRenderer.invoke("prompt:enhance-smart", userPrompt, namespaceId || null),
   },
 
   // ── Namespace isolation ───────────────────────────────
@@ -716,6 +724,12 @@ contextBridge.exposeInMainWorld("api", {
     build: () => ipcRenderer.invoke("profile:build"),
     /** Wipe the profile completely. Returns { ok }. */
     clear: () => ipcRenderer.invoke("profile:clear"),
+  },
+
+  // ── Tester feedback ──────────────────────────────────────
+  feedback: {
+    /** Submit a feedback note (stored locally in userData/feedback.json). Returns { ok, count }. */
+    submit: (message) => ipcRenderer.invoke("feedback:submit", message),
   },
 
   // ── Policy memory (RAG agent's durable facts) ───────────

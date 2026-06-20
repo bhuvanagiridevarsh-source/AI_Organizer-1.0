@@ -92,89 +92,116 @@ function downloadModel(window, onProgress) {
       console.log(`[ModelDownloader] Resuming from byte ${startByte}`);
     }
 
-    const url      = new URL(MODEL_DOWNLOAD_URL);
-    const protocol = url.protocol === "https:" ? https : http;
+    const MAX_REDIRECTS = 6;
 
-    const reqOptions = {
-      hostname: url.hostname,
-      port:     url.port || (url.protocol === "https:" ? 443 : 80),
-      path:     url.pathname + url.search,
-      method:   "GET",
-      headers:  startByte > 0 ? { Range: `bytes=${startByte}-` } : {},
-    };
-
-    const req = protocol.request(reqOptions, (res) => {
-      // Follow redirects
-      if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) {
-        console.log(`[ModelDownloader] Redirect → ${res.headers.location}`);
-        downloadModel(window, onProgress).then(resolve);
-        res.resume();
+    // Issues the GET and follows redirects using the Location header. GitHub
+    // release downloads ALWAYS 302 to a signed object-storage URL, so we must
+    // follow the redirect target — re-requesting the original URL would just
+    // redirect again forever (the previous bug).
+    const doRequest = (currentUrl, redirectsLeft) => {
+      let url;
+      try { url = new URL(currentUrl); }
+      catch {
+        const e = `Bad URL: ${currentUrl}`;
+        window?.webContents?.send("model:download-error", { message: e });
+        resolve({ success: false, error: e });
         return;
       }
+      const protocol = url.protocol === "https:" ? https : http;
 
-      if (res.statusCode !== 200 && res.statusCode !== 206) {
-        const err = `HTTP ${res.statusCode}`;
-        console.error(`[ModelDownloader] Download failed: ${err}`);
-        window?.webContents?.send("model:download-error", { message: err });
-        resolve({ success: false, error: err });
-        return;
-      }
+      const reqOptions = {
+        hostname: url.hostname,
+        port:     url.port || (url.protocol === "https:" ? 443 : 80),
+        path:     url.pathname + url.search,
+        method:   "GET",
+        headers:  startByte > 0 ? { Range: `bytes=${startByte}-` } : {},
+      };
 
-      const contentLength = parseInt(res.headers["content-length"] || "0", 10);
-      const totalBytes    = contentLength + startByte;
-      let   downloaded    = startByte;
-
-      const writeStream = fs.createWriteStream(tmpPath, {
-        flags: startByte > 0 ? "a" : "w",
-      });
-
-      res.on("data", (chunk) => {
-        downloaded += chunk.length;
-        writeStream.write(chunk);
-
-        if (totalBytes > 0) {
-          const percent = Math.round((downloaded / totalBytes) * 100);
-          onProgress?.(percent);
-          window?.webContents?.send("model:download-progress", {
-            percent,
-            downloaded,
-            total: totalBytes,
-          });
-        }
-      });
-
-      res.on("end", () => {
-        writeStream.end(() => {
-          if (downloaded < 100 * 1024 * 1024) {
-            const err = "Downloaded file is too small — possible corrupt download.";
+      const req = protocol.request(reqOptions, (res) => {
+        // Follow redirects to where the server actually points us.
+        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+          res.resume(); // drain the response
+          const location = res.headers.location;
+          if (!location || redirectsLeft <= 0) {
+            const err = `Redirect failed (HTTP ${res.statusCode}, no usable Location)`;
+            console.error(`[ModelDownloader] ${err}`);
             window?.webContents?.send("model:download-error", { message: err });
             resolve({ success: false, error: err });
             return;
           }
+          // Resolve relative redirects against the current URL.
+          const nextUrl = new URL(location, url).toString();
+          console.log(`[ModelDownloader] Redirect → ${nextUrl}`);
+          doRequest(nextUrl, redirectsLeft - 1);
+          return;
+        }
 
-          // Rename .part → final
-          fs.renameSync(tmpPath, destPath);
-          console.log(`[ModelDownloader] Download complete → ${destPath}`);
-          window?.webContents?.send("model:download-done");
-          resolve({ success: true, path: destPath });
+        if (res.statusCode !== 200 && res.statusCode !== 206) {
+          const err = `HTTP ${res.statusCode}`;
+          console.error(`[ModelDownloader] Download failed: ${err}`);
+          window?.webContents?.send("model:download-error", { message: err });
+          resolve({ success: false, error: err });
+          return;
+        }
+
+        const contentLength = parseInt(res.headers["content-length"] || "0", 10);
+        const totalBytes    = contentLength + startByte;
+        let   downloaded    = startByte;
+
+        const writeStream = fs.createWriteStream(tmpPath, {
+          flags: startByte > 0 ? "a" : "w",
+        });
+
+        res.on("data", (chunk) => {
+          downloaded += chunk.length;
+          writeStream.write(chunk);
+
+          if (totalBytes > 0) {
+            const percent = Math.round((downloaded / totalBytes) * 100);
+            onProgress?.(percent);
+            window?.webContents?.send("model:download-progress", {
+              percent,
+              downloaded,
+              total: totalBytes,
+            });
+          }
+        });
+
+        res.on("end", () => {
+          writeStream.end(() => {
+            if (downloaded < 100 * 1024 * 1024) {
+              const err = "Downloaded file is too small — possible corrupt download.";
+              window?.webContents?.send("model:download-error", { message: err });
+              resolve({ success: false, error: err });
+              return;
+            }
+
+            // Rename .part → final
+            fs.renameSync(tmpPath, destPath);
+            console.log(`[ModelDownloader] Download complete → ${destPath}`);
+            window?.webContents?.send("model:download-done");
+            resolve({ success: true, path: destPath });
+          });
+        });
+
+        res.on("error", (err) => {
+          writeStream.end();
+          console.error(`[ModelDownloader] Stream error: ${err.message}`);
+          window?.webContents?.send("model:download-error", { message: err.message });
+          resolve({ success: false, error: err.message });
         });
       });
 
-      res.on("error", (err) => {
-        writeStream.end();
-        console.error(`[ModelDownloader] Stream error: ${err.message}`);
+      req.on("error", (err) => {
+        console.error(`[ModelDownloader] Request error: ${err.message}`);
         window?.webContents?.send("model:download-error", { message: err.message });
         resolve({ success: false, error: err.message });
       });
-    });
 
-    req.on("error", (err) => {
-      console.error(`[ModelDownloader] Request error: ${err.message}`);
-      window?.webContents?.send("model:download-error", { message: err.message });
-      resolve({ success: false, error: err.message });
-    });
+      req.end();
+    };
 
-    req.end();
+    doRequest(MODEL_DOWNLOAD_URL, MAX_REDIRECTS);
   });
 }
 

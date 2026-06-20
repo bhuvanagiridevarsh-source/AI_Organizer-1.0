@@ -2856,6 +2856,84 @@ ipcMain.handle("prompt:rag-context", async (_event, userPrompt) => {
   }
 });
 
+// ── Unified RAG-enhance workflow ──────────────────────────────────────────────
+// One call that runs the whole pipeline: ensure the user profile exists, detect
+// the namespace, RAG-retrieve the specifics relevant to THIS prompt (policy cards
+// + file passages, scoped to that namespace), then rewrite. This is the
+// "files → understanding → context-aware enhancement" workflow end to end.
+
+/** Build the profile-inference inputs from current app state. */
+function gatherProfileInputs() {
+  const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
+  let namespaces = [];
+  try { namespaces = NamespaceService.listNamespaces() || []; } catch { /* none */ }
+  const employer = (() => { try { return NamespaceService.getEmployerNamespace(); } catch { return null; } })();
+  let entries = [];
+  try { entries = getAllEntries() || []; } catch { /* index empty */ }
+  return { kg, namespaces, employer, entries };
+}
+
+ipcMain.handle("prompt:enhance-smart", async (_event, userPrompt, preferredNamespaceId) => {
+  try {
+    const LlamaService = require("./services/LlamaService");
+    const PromptWorkflowService = require("./services/PromptWorkflowService");
+    const UserProfileService = require("./services/UserProfileService");
+
+    if (!LlamaService.isReady()) {
+      return { enhanced: null, error: "AI engine is still loading. Please wait a moment and try again." };
+    }
+
+    // 1. Ensure an identity profile exists. First-ever run: build it now so the
+    //    very first enhancement is already personalized. Merely stale: refresh in
+    //    the background and proceed with what we have (keeps latency low).
+    try {
+      const inputs = gatherProfileInputs();
+      if (UserProfileService.isEmpty()) {
+        await UserProfileService.buildProfile(inputs);
+      } else if (UserProfileService.isStale()) {
+        UserProfileService.buildProfile(inputs).catch(() => {});
+      }
+    } catch (e) {
+      console.warn("[prompt:enhance-smart] profile ensure failed:", e?.message);
+    }
+
+    // 2. RAG retrieval wrapper — hybrid search, scoped to the namespace so no
+    //    cross-company leakage reaches the rewrite.
+    const retrieve = async (query, namespaceId) => {
+      try {
+        const hits = await searchFilesHybrid(query, 12);
+        const scoped = namespaceId
+          ? hits.filter((h) => NamespaceService.getNamespaceForFolder(h.folder) === namespaceId)
+          : hits;
+        return scoped.slice(0, PromptWorkflowService.MAX_PASSAGES).map((h) => ({
+          filename: h.filename,
+          folder: h.folder,
+          snippet: (h.snippet || h.fullText || "").slice(0, 220),
+        }));
+      } catch { return []; }
+    };
+
+    const kg = (() => { try { return loadKG(currentBaseDir); } catch { return null; } })();
+
+    const result = await PromptWorkflowService.runEnhancement(
+      userPrompt,
+      { preferredNamespaceId: preferredNamespaceId || null },
+      {
+        llama: LlamaService,
+        namespaceService: NamespaceService,
+        policyService: PolicyService,
+        userProfileService: UserProfileService,
+        retrieve,
+        kg,
+      }
+    );
+    return result;
+  } catch (err) {
+    console.error("[prompt:enhance-smart] error:", err?.message);
+    return { enhanced: null, error: err?.message ?? "Enhancement failed." };
+  }
+});
+
 // ── Employer identity IPC ─────────────────────────────────────────────────────
 
 /** Current employer + scored candidates so the UI can suggest/confirm one. */
@@ -2967,6 +3045,30 @@ ipcMain.handle("profile:build", async () => {
 ipcMain.handle("profile:clear", () => {
   try { return { ok: UserProfileService.clearProfile() }; }
   catch (e) { return { ok: false, error: e?.message }; }
+});
+
+// ── Tester feedback ────────────────────────────────────────────────────────────
+// Lightweight local feedback log so testers can send notes during the prelaunch
+// test. Appends to userData/feedback.json with app version + platform context.
+ipcMain.handle("feedback:submit", (_event, message) => {
+  try {
+    const text = String(message || "").trim();
+    if (!text) return { ok: false, error: "Empty feedback" };
+    const fp = path.join(app.getPath("userData"), "feedback.json");
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(fp, "utf-8")); if (!Array.isArray(list)) list = []; } catch { list = []; }
+    list.push({
+      text,
+      at: new Date().toISOString(),
+      version: app.getVersion(),
+      platform: `${process.platform} ${process.arch}`,
+    });
+    fs.writeFileSync(fp, JSON.stringify(list, null, 2), "utf-8");
+    return { ok: true, count: list.length };
+  } catch (e) {
+    console.error("[feedback:submit]", e?.message);
+    return { ok: false, error: e?.message };
+  }
 });
 
 // ── Namespace management IPC ──────────────────────────────────────────────────

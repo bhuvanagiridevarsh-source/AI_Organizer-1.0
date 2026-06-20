@@ -1798,6 +1798,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // Tester feedback
+  const sendFeedbackBtn = $("sendFeedbackBtn");
+  if (sendFeedbackBtn) {
+    sendFeedbackBtn.addEventListener("click", async () => {
+      const ta = $("feedbackText");
+      const status = $("feedbackStatus");
+      const text = (ta && ta.value || "").trim();
+      if (!text) { if (status) status.textContent = "Type something first."; return; }
+      sendFeedbackBtn.disabled = true;
+      try {
+        const r = await window.api.feedback.submit(text);
+        if (r && r.ok) {
+          if (ta) ta.value = "";
+          if (status) status.textContent = "Thanks — sent!";
+        } else if (status) {
+          status.textContent = "Couldn't save feedback.";
+        }
+      } catch {
+        if (status) status.textContent = "Couldn't save feedback.";
+      } finally {
+        sendFeedbackBtn.disabled = false;
+        setTimeout(() => { if (status) status.textContent = ""; }, 4000);
+      }
+    });
+  }
+
   // ── Undo / Redo buttons ──
   const undoBtnEl = $("undoBtn");
   const redoBtnEl = $("redoBtn");

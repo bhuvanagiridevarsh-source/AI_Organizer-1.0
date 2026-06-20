@@ -1,10 +1,11 @@
-name: Build & Release
+name: Build (legacy — manual only)
 
+# NOTE: build-release.yml is the canonical release pipeline. This older workflow
+# is kept for manual/debug runs only. Its tag trigger was removed so that a single
+# "v*" tag push does NOT start two workflows that both try to create the same
+# GitHub Release (which collides and fails). Trigger this one by hand if needed.
 on:
-  push:
-    tags:
-      - "v*"          # Runs when you push a tag like v1.0.1
-  workflow_dispatch:  # Also lets you trigger manually from GitHub
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   # ── macOS (Apple Silicon) ──────────────────────────────────

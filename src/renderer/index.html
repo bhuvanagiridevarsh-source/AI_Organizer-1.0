@@ -3535,6 +3535,16 @@ html.show-kanji .footer-kanji { display: block; }
         </div>
       </div>
 
+      <!-- ── Send feedback (testers) ──────────────────────────────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">Send feedback</div>
+        <textarea id="feedbackText" placeholder="What worked, what broke, what felt confusing…" style="width:100%;box-sizing:border-box;min-height:56px;resize:vertical;background:#1a1a1a;color:#ddd;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px;font-size:12px;font-family:inherit;"></textarea>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary btn-sm" id="sendFeedbackBtn">Send feedback</button>
+          <span id="feedbackStatus" style="font-size:11px;color:#6a9;"></span>
+        </div>
+      </div>
+
       <div class="s-actions">
         <button class="btn btn-danger btn-sm" id="clearLearningBtn">Clear Learning</button>
         <button class="btn btn-primary btn-sm" id="refreshFpBtn">Refresh Fingerprints</button>
