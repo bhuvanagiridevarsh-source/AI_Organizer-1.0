@@ -60,11 +60,21 @@ const args = [
 
 console.log(`[compile-ts] Compiling ${tsFiles.length} TypeScript files with esbuild...`);
 
-const result = spawnSync(esbuildBin, args, {
-  stdio: "inherit",
-  shell: false,
-  cwd: rootDir,
-});
+// Node 18.20+/20.12+/22 refuse to spawn .cmd/.bat files without a shell
+// (security fix CVE-2024-27980 → EINVAL). On Windows, esbuild's launcher IS
+// esbuild.cmd, so we must run it through the shell there. macOS/Linux spawn the
+// binary directly (unchanged — that path already works). When using the shell we
+// quote the binary and every arg so paths with spaces survive.
+const isWin = process.platform === "win32";
+const result = spawnSync(
+  isWin ? `"${esbuildBin}"` : esbuildBin,
+  isWin ? args.map((a) => `"${a}"`) : args,
+  {
+    stdio: "inherit",
+    shell: isWin,
+    cwd: rootDir,
+  }
+);
 
 if (result.error) {
   console.error("[compile-ts] Failed to spawn esbuild:", result.error.message);
