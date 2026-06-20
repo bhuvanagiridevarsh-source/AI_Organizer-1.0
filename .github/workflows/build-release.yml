@@ -25,7 +25,10 @@ jobs:
         run: npm ci
 
       - name: Build macOS (DMG + zip)
-        run: npm run build:mac
+        # --publish never: just build, don't upload. The dedicated "release" job
+        # below attaches the artifacts to the GitHub Release. Without this,
+        # electron-builder tries to auto-publish and fails (no GH_TOKEN here).
+        run: npm run compile && npx electron-builder --mac --publish never
         env:
           # Skip signing — no paid Apple cert. Users may see a Gatekeeper warning;
           # they can right-click → Open to bypass it.
@@ -60,8 +63,9 @@ jobs:
 
       - name: Build Windows (NSIS installer + zip)
         # On a real Windows runner we can use nsis — no wine needed.
-        # Also re-enable rcedit so the .exe has proper version metadata.
-        run: npx electron-builder --win --x64 --config.win.signAndEditExecutable=false --config.win.target[0]=nsis --config.win.target[1]=zip
+        # --publish never: build only; the "release" job uploads. compile first
+        # so the TypeScript is transpiled before packaging.
+        run: npm run compile && npx electron-builder --win --x64 --publish never --config.win.signAndEditExecutable=false --config.win.target[0]=nsis --config.win.target[1]=zip
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
