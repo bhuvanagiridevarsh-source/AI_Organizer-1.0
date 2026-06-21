@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Janitor vs. The Field — Feature Comparison</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#2a323c; --ink:#e6edf3; --muted:#9aa7b4;
+    --mine:#1f6feb; --mineSoft:#0d2c54; --yes:#3fb950; --no:#6e7681; --part:#d29922;
+    --chip:#21262d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;padding:28px 20px 60px}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 20px}
+  h2{font-size:18px;margin:34px 0 10px;border-left:3px solid var(--mine);padding-left:10px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 18px;font-size:13px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{font-weight:700}
+  .yes{color:var(--yes)} .no{color:var(--no)} .part{color:var(--part)}
+  .scroller{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:1100px;font-size:13px}
+  th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:9px 10px;text-align:center;vertical-align:middle}
+  thead th{position:sticky;top:0;background:#0f141a;z-index:3;font-size:12px;font-weight:600;color:var(--ink)}
+  tbody th{position:sticky;left:0;background:#0f141a;z-index:2;text-align:left;font-weight:600;min-width:230px;max-width:230px;color:var(--ink)}
+  thead th:first-child{left:0;z-index:4}
+  /* my column highlight */
+  th.mine,td.mine{background:var(--mineSoft);}
+  thead th.mine{background:#10325f;border-top:2px solid var(--mine);border-left:2px solid var(--mine);border-right:2px solid var(--mine)}
+  td.mine{border-left:2px solid var(--mine);border-right:2px solid var(--mine)}
+  tbody tr:last-child td.mine{border-bottom:2px solid var(--mine)}
+  .badge{display:inline-block;background:var(--mine);color:#fff;font-size:10px;font-weight:700;
+    padding:2px 6px;border-radius:6px;letter-spacing:.04em;margin-top:4px}
+  .cellx{font-size:15px;font-weight:700}
+  .note{font-size:11px;color:var(--muted);display:block;margin-top:2px;font-weight:400}
+  .txt{font-size:12px;color:var(--ink);font-weight:500}
+  td.rowlabelnote{font-weight:400}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .card.win{border-color:var(--yes)}
+  .card.watch{border-color:var(--part)}
+  .card h3{margin:0 0 8px;font-size:16px}
+  .card p{margin:0 0 8px;color:var(--ink)}
+  ul{margin:6px 0 0;padding-left:20px}
+  li{margin:5px 0}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:20px;
+    padding:3px 10px;font-size:12px;margin:2px 4px 2px 0;color:var(--muted)}
+  footer{margin-top:34px;color:var(--muted);font-size:12px;text-align:center}
+  @media print{body{background:#fff;color:#000}.scroller{overflow:visible}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>System Janitor vs. the “AI memory / context layer” field</h1>
+  <p class="sub">Feature comparison · built June 2026 · sources verified via web + each vendor's site. Your product (System Janitor) is the highlighted column.</p>
+
+  <div class="legend">
+    <span><span class="dot yes">●</span> Yes / core feature</span>
+    <span><span class="dot part">◐</span> Partial / limited / paid-tier / planned</span>
+    <span><span class="dot no">○</span> No / not the focus</span>
+    <span class="muted">Hover notes give detail. Scroll the table sideways →</span>
+  </div>
+
+  <div class="scroller">
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th class="mine">System Janitor<div class="badge">YOURS</div></th>
+        <th>Supermemory</th>
+        <th>Pieces</th>
+        <th>Mem0 / OpenMemory</th>
+        <th>MemoryPlugin</th>
+        <th>Jean Memory</th>
+        <th>Hyperspell</th>
+        <th>Khoj</th>
+        <th>Personal.ai</th>
+        <th>Plurality</th>
+        <th>myNeutron</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <tr>
+        <th>What it really is</th>
+        <td class="mine"><span class="txt">Local AI file organizer + personal context</span></td>
+        <td><span class="txt">Memory API / context engine</span></td>
+        <td><span class="txt">Dev workflow memory</span></td>
+        <td><span class="txt">Memory layer for agents</span></td>
+        <td><span class="txt">Cross-chat memory ext</span></td>
+        <td><span class="txt">Personal memory vault</span></td>
+        <td><span class="txt">Company/agent context</span></td>
+        <td><span class="txt">OSS "second brain"</span></td>
+        <td><span class="txt">Personal language model</span></td>
+        <td><span class="txt">Context-flow extension</span></td>
+        <td><span class="txt">Context "seeds" ext</span></td>
+      </tr>
+
+      <tr>
+        <th>Auto-organizes files into folders <span class="note">moves & sorts files on disk</span></th>
+        <td class="mine cellx yes">●<span class="note">core promise</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Renames files intelligently</th>
+        <td class="mine cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Runs 100% local / offline</th>
+        <td class="mine cellx yes">●<span class="note">on-device GGUF</span></td>
+        <td class="cellx part">◐<span class="note">self-host on paid tiers</span></td>
+        <td class="cellx yes">●<span class="note">local-first</span></td>
+        <td class="cellx yes">●<span class="note">OpenMemory local</span></td>
+        <td class="cellx no">○<span class="note">cloud</span></td>
+        <td class="cellx part">◐<span class="note">self-host option</span></td>
+        <td class="cellx no">○<span class="note">cloud</span></td>
+        <td class="cellx yes">●<span class="note">self-host</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Reads file contents <span class="note">PDF / Word / Excel / PPT</span></th>
+        <td class="mine cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐<span class="note">snippets, not file tree</span></td>
+        <td class="cellx part">◐<span class="note">API ingest</span></td>
+        <td class="cellx part">◐<span class="note">uploads</span></td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>OCR (scanned docs / images)</th>
+        <td class="mine cellx yes">●<span class="note">Tesseract</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Full-text search of your files</th>
+        <td class="mine cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>Chat with your files</th>
+        <td class="mine cellx yes">●</td>
+        <td class="cellx part">◐<span class="note">via app</span></td>
+        <td class="cellx yes">●<span class="note">copilot</span></td>
+        <td class="cellx no">○<span class="note">infra only</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○<span class="note">infra only</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Builds profile / knowledge graph</th>
+        <td class="mine cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐<span class="note">buckets</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>Learns from your corrections</th>
+        <td class="mine cellx yes">●<span class="note">background learner</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>Injects context into OTHER AI tools <span class="note">ChatGPT / Claude / Cursor</span></th>
+        <td class="mine cellx part">◐<span class="note">in-app prompt enhancer; no live ext yet</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○<span class="note">standalone</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+      </tr>
+
+      <tr>
+        <th>Browser extension</th>
+        <td class="mine cellx no">○<span class="note">not yet</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+      </tr>
+
+      <tr>
+        <th>MCP server</th>
+        <td class="mine cellx no">○<span class="note">roadmap</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+      </tr>
+
+      <tr>
+        <th>Developer API</th>
+        <td class="mine cellx no">○<span class="note">roadmap (6mo)</span></td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>Cloud connectors <span class="note">Drive / Gmail / Notion / Slack</span></th>
+        <td class="mine cellx part">◐<span class="note">Drive + iCloud, optional</span></td>
+        <td class="cellx yes">●<span class="note">7+ sources</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐<span class="note">chat imports</span></td>
+        <td class="cellx part">◐</td>
+        <td class="cellx yes">●<span class="note">50+ OAuth</span></td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+      </tr>
+
+      <tr>
+        <th>Compliance: PII / audit / retention <span class="note">("Work Mode")</span></th>
+        <td class="mine cellx yes">●<span class="note">built</span></td>
+        <td class="cellx part">◐<span class="note">SOC2/HIPAA top tier</span></td>
+        <td class="cellx part">◐</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●<span class="note">SOC2</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Open source</th>
+        <td class="mine cellx no">○<span class="note">private + obfuscated</span></td>
+        <td class="cellx part">◐<span class="note">core OSS</span></td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx yes">●</td>
+        <td class="cellx no">○</td>
+        <td class="cellx part">◐</td>
+        <td class="cellx no">○</td>
+      </tr>
+
+      <tr>
+        <th>Platform</th>
+        <td class="mine"><span class="txt">macOS (Win planned)</span></td>
+        <td><span class="txt">Web / cross</span></td>
+        <td><span class="txt">Mac / Win / Linux</span></td>
+        <td><span class="txt">Web / dev</span></td>
+        <td><span class="txt">Browser ext</span></td>
+        <td><span class="txt">Web / dev</span></td>
+        <td><span class="txt">Dev / API</span></td>
+        <td><span class="txt">Web / desktop</span></td>
+        <td><span class="txt">Web / app</span></td>
+        <td><span class="txt">Browser ext</span></td>
+        <td><span class="txt">Browser ext</span></td>
+      </tr>
+
+      <tr>
+        <th>Funding raised</th>
+        <td class="mine"><span class="txt">$0 — bootstrapped</span></td>
+        <td><span class="txt">$3M seed</span></td>
+        <td><span class="txt">$13.5M Series A</span></td>
+        <td><span class="txt">$24M total</span></td>
+        <td><span class="txt">Indie</span></td>
+        <td><span class="txt">n/a</span></td>
+        <td><span class="txt">YC F25</span></td>
+        <td><span class="txt">YC-backed</span></td>
+        <td><span class="txt">VC-backed</span></td>
+        <td><span class="txt">Indie</span></td>
+        <td><span class="txt">Indie</span></td>
+      </tr>
+
+      <tr>
+        <th>Price</th>
+        <td class="mine"><span class="txt">$7.99–12.99/mo (planned)</span></td>
+        <td><span class="txt">Free + $19/$100/$399</span></td>
+        <td><span class="txt">Free + $18.99/mo</span></td>
+        <td><span class="txt">Free + Pro; OSS free</span></td>
+        <td><span class="txt">$50/yr</span></td>
+        <td><span class="txt">Free / OSS</span></td>
+        <td><span class="txt">Undisclosed</span></td>
+        <td><span class="txt">Free / self-host</span></td>
+        <td><span class="txt">Paid</span></td>
+        <td><span class="txt">$59 lifetime (LTD)</span></td>
+        <td><span class="txt">n/a</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+  </div>
+
+  <h2>What the chart actually tells you</h2>
+
+  <div class="card win">
+    <h3>✅ Your real moat: nobody in this list touches your files</h3>
+    <p>Read the top two rows again. <strong>Zero</strong> of the ten funded "memory/context layer" companies actually organize, move, or rename files on your disk. They ingest data to feed <em>other</em> AI tools. You're the only one whose core action is "drag a messy folder in, get it sorted." That is a different job-to-be-done, and it's one normal (non-developer) people viscerally understand and want.</p>
+    <p class="muted">Translation: the scary funded competitors you were worried about mostly aren't competing for the same user. They sell plumbing to developers; you sell a clean desktop to humans.</p>
+  </div>
+
+  <div class="card watch">
+    <h3>⚠️ But you have a different competitor set you didn't list</h3>
+    <p>Your <em>true</em> head-to-head rivals are local AI <strong>file organizers</strong>: AI File Sorter (open-source, Win/Mac/Linux, local GGUF), Tiny Sort (Mac App Store, on-device), Sortio (offline mode), and The Drive AI (cloud, multi-drive). These do the same core job you do.</p>
+    <p>Here's the good news: most of them <em>only</em> sort files. They don't have your profile-building, chat-with-files, learning-from-corrections, or Work Mode compliance layer. So your edge isn't "AI organizes files" (taken) — it's <strong>"local file organizer that also becomes a private brain about your work."</strong> That combination is genuinely rare.</p>
+  </div>
+
+  <div class="card">
+    <h3>🔧 Where you're behind — and it's fixable</h3>
+    <p>The whole right side of the matrix (browser extension, MCP server, public API) is where the funded crowd is strong and you're not yet. That's fine — those are <em>distribution</em> features, not your core value. But the single highest-leverage gap is the <strong>"injects context into other AI tools"</strong> row: you have an in-app prompt enhancer, but no live extension that feeds your profile into ChatGPT/Claude the way Supermemory and MemoryPlugin do. If you ever want to claim the "context layer" story too, that's the one to build. Until then, lead with the file-organizer story — it's stronger and less crowded.</p>
+  </div>
+
+  <div class="card">
+    <h3>🎯 The one-sentence positioning this chart suggests</h3>
+    <p style="font-size:16px"><em>"The private, on-device AI that cleans up your files <strong>and</strong> quietly learns what you work on — so your computer and your AI tools both finally understand you."</em></p>
+    <p class="muted">Lead with privacy + local (your strongest, most defensible claim vs. the cloud crowd), wedge in through file organization (a pain people already feel), expand into the context layer later.</p>
+  </div>
+
+  <h2>Honest caveats</h2>
+  <p class="muted">Fast-moving space — vendor features and prices shift monthly; reconfirm before quoting. "Partial (◐)" reflects judgment calls where a feature exists but isn't the product's focus or is paywalled. Funding figures are from 2024–2025 announcements. Your column reflects what's in the project files + product summary (some items marked "planned/roadmap").</p>
+
+  <div style="margin-top:16px">
+    <span class="pill">Local-first</span><span class="pill">File organization</span><span class="pill">Privacy</span>
+    <span class="pill">On-device LLM</span><span class="pill">Knowledge graph</span><span class="pill">Work Mode / compliance</span>
+    <span class="pill">macOS</span>
+  </div>
+
+  <footer>Built for Devarsh · System Janitor competitive analysis · June 2026 · for planning use, verify vendor claims independently</footer>
+</div>
+</body>
+</html>

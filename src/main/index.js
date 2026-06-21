@@ -120,7 +120,16 @@ const os = require("os");
 const fs = require("fs");
 const https = require("https");
 const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage, Notification } = require("electron");
-const { autoUpdater } = require("electron-updater");
+// Auto-update is non-essential. Load it defensively so a missing/failed updater
+// module can NEVER crash the app on boot (this require runs at module load,
+// before any try/catch around usage). If it can't load, autoUpdater stays null
+// and every call site below is guarded.
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch (err) {
+  console.warn(`[updater] electron-updater unavailable — auto-update disabled: ${err?.message}`);
+}
 const { buildAppMenu } = require("./appMenu");
 
 // ── Hardcoded destination (computed once in main process) ────
@@ -770,6 +779,7 @@ app.whenReady().then(async () => {
 
   // ── 3. Auto-update (silent, never crashes the app) ──
   try {
+    if (!autoUpdater) throw new Error("electron-updater not loaded");
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
@@ -821,7 +831,7 @@ ipcMain.handle = function(channel, listener) {
 
 // Auto-update — quit and install downloaded update
 ipcMain.handle("update:install", () => {
-  autoUpdater.quitAndInstall();
+  if (autoUpdater) autoUpdater.quitAndInstall();
 });
 
 // Destination path — renderer fetches this on startup
