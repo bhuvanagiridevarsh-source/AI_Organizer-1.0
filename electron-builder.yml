@@ -14,27 +14,17 @@ afterPack: scripts/afterPack.js
 # ── Files to include in the app bundle ──
 # Without this, electron-builder grabs EVERYTHING in the project folder
 # including dist/ (old builds), FINAL_APP_FOLDER, test_folder, etc.
+# List the app's OWN files explicitly, then let electron-builder do what it does
+# best: AUTOMATICALLY bundle the production dependencies from node_modules based
+# on package.json. The previous "**/*" catch-all silently dropped node_modules,
+# so the packaged app crashed at launch with "Cannot find module" (electron-store,
+# electron-updater, …). Everything the app loads at runtime lives under src/;
+# the model + default_alias_map are delivered via extraResources below.
 files:
-  - "**/*"
-  # Build output / large dev-only folders
-  - "!dist/**"
-  - "!FINAL_APP_FOLDER/**"
-  - "!test_folder/**"
-  - "!backend/**"
-  - "!installer/**"
-  - "!scripts/**"
-  - "!resources_new/**"
-  - "!resources/**"
-  - "!.vscode/**"
-  - "!.claude/**"
-  - "!*.cer"
-  - "!feedback.json"
-  - "!wizard_state.json"
-  - "!CLASSIFICATION_FIX_PROMPT.md"
-  - "!AppleWWDRCAG3.cer"
-  # TypeScript source files — compiled to .js by scripts/compile-ts.js
-  # before packing; .ts files are not needed (and not executable) in the bundle.
+  - "src/**/*"
+  # .ts is compiled to .js by scripts/compile-ts.js before packing; .ts not needed.
   - "!src/**/*.ts"
+  - "package.json"
 
 # ── Source code protection ──
 asar: true
