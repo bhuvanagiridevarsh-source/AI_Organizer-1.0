@@ -25,6 +25,11 @@ files:
   # .ts is compiled to .js by scripts/compile-ts.js before packing; .ts not needed.
   - "!src/**/*.ts"
   - "package.json"
+  # Explicitly copy node_modules. electron-builder 26's automatic dependency
+  # collection was shipping ZERO modules on the CI runner (app crashed with
+  # "Cannot find module electron-store/electron-updater"). Naming node_modules
+  # here forces a literal copy, which is how the working local build behaved.
+  - "node_modules/**/*"
 
 # ── Source code protection ──
 asar: true
