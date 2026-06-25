@@ -46,29 +46,126 @@ async function verifyAsar(context) {
     return;
   }}
   const entries = asar.listPackage(asarPath);
-  // Also check app.asar.unpacked/ — native modules (better-sqlite3, node-llama-cpp)
-  // live there because .node files can't reliably dlopen from inside an asar.
-  const unpackedDir = asarPath + '.unpacked';
-  const unpackedHas = (m) => {
-    try { return fs.existsSync(path.join(unpackedDir, 'node_modules', m)); }
-    catch { return false; }
+  // Also check the sibling locations where modules can live at runtime:
+  //   1. app.asar.unpacked/node_modules  — electron-builder's standard unpack target
+  //   2. resources/node_modules          — where ensureProdNodeModules() copies them
+  // Node's resolver walks up from app.asar/src/main and finds resources/node_modules.
+  const resourcesDir = path.dirname(asarPath);
+  const unpackedNM = path.join(asarPath + '.unpacked', 'node_modules');
+  const siblingNM = path.join(resourcesDir, 'node_modules');
+  const haveModule = (m) => {
+    if (entries.some(e => e.startsWith(`/node_modules/${m}/`) || e === `/node_modules/${m}`)) return true;
+    if (fs.existsSync(path.join(unpackedNM, m, 'package.json'))) return true;
+    if (fs.existsSync(path.join(siblingNM, m, 'package.json'))) return true;
+    return false;
   };
-  const missing = REQUIRED_MODULES.filter(m =>
-    !entries.some(e => e.startsWith(`/node_modules/${m}/`) || e === `/node_modules/${m}`)
-    && !unpackedHas(m)
-  );
+  const missing = REQUIRED_MODULES.filter(m => !haveModule(m));
   if (missing.length) {
     console.error('\n❌❌❌ verifyAsar FAILED — packaged app would crash at boot.');
-    console.error(`Missing modules in ${asarPath} (and .unpacked):`);
+    console.error(`Missing modules (checked asar + .unpacked + resources/node_modules):`);
     missing.forEach(m => console.error(`   - ${m}`));
-    console.error('Fix electron-builder.yml `files:` so these ship, then rebuild.\n');
+    console.error('ensureProdNodeModules() should have copied these — check the copy log above.\n');
     process.exit(1);
   }
-  console.log(`✓ verifyAsar: all ${REQUIRED_MODULES.length} critical modules present (asar + unpacked)`);
+  console.log(`✓ verifyAsar: all ${REQUIRED_MODULES.length} critical modules present`);
+}
+
+/**
+ * Force the production node_modules next to app.asar.
+ *
+ * Why this exists: electron-builder 26's file collection silently strips
+ * node_modules even when you explicitly add `node_modules/**\/*` to `files:`.
+ * The result is an app that boots into "Cannot find module 'electron-store'".
+ *
+ * The fix sidesteps electron-builder's filtering entirely: we read the project's
+ * own package.json, walk every production dependency (and its transitive deps),
+ * and physically copy each one into resources/node_modules/ — a real filesystem
+ * directory adjacent to app.asar. Node's standard require() resolver walks up
+ * the directory tree from the requiring file (inside app.asar) and finds the
+ * module at resources/node_modules/<name>/. No asar manifest manipulation
+ * needed; this is exactly how non-asar Electron apps work.
+ *
+ * This runs in afterPack — after electron-builder has written app.asar but
+ * before code-signing (which on macOS will then sign any .node files too).
+ */
+function ensureProdNodeModules(context) {
+  const srcRoot = path.resolve(__dirname, '..');         // repo root
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(srcRoot, 'package.json'), 'utf-8'));
+  const prodDeps = Object.keys(pkgJson.dependencies || {});
+
+  const resourcesDir = context.electronPlatformName === 'darwin'
+    ? path.join(context.appOutDir,
+        `${(context.packager.appInfo && context.packager.appInfo.productName) || 'System Janitor'}.app/Contents/Resources`)
+    : path.join(context.appOutDir, 'resources');
+  const targetNM = path.join(resourcesDir, 'node_modules');
+  fs.mkdirSync(targetNM, { recursive: true });
+
+  // Walk dep tree: read each module's package.json, recurse on its `dependencies`.
+  const visited = new Set();
+  const queue = [...prodDeps];
+  const copied = [];
+  const missing = [];
+
+  // Recursively copy a directory (Node 16.7+ has cpSync; safe on CI Node 22).
+  const copyDir = (src, dst) => {
+    fs.cpSync(src, dst, { recursive: true, dereference: true, errorOnExist: false, force: true });
+  };
+
+  // Resolve a module's installed dir, walking up node_modules trees.
+  const resolveModuleDir = (modName, fromDir) => {
+    let dir = fromDir;
+    while (true) {
+      const candidate = path.join(dir, 'node_modules', modName);
+      if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  };
+
+  while (queue.length) {
+    const modName = queue.shift();
+    if (visited.has(modName)) continue;
+    visited.add(modName);
+
+    const modDir = resolveModuleDir(modName, srcRoot);
+    if (!modDir) { missing.push(modName); continue; }
+
+    const dstDir = path.join(targetNM, modName);
+    try {
+      copyDir(modDir, dstDir);
+      copied.push(modName);
+    } catch (err) {
+      console.warn(`   ⚠ ensureProdNodeModules: failed to copy ${modName}: ${err.message}`);
+      missing.push(modName);
+      continue;
+    }
+
+    // Recurse into this module's own production dependencies.
+    try {
+      const modPkg = JSON.parse(fs.readFileSync(path.join(modDir, 'package.json'), 'utf-8'));
+      for (const dep of Object.keys(modPkg.dependencies || {})) {
+        if (!visited.has(dep)) queue.push(dep);
+      }
+    } catch { /* unparseable package.json — skip recursion */ }
+  }
+
+  console.log(`✓ ensureProdNodeModules: copied ${copied.length} modules into resources/node_modules/`);
+  if (missing.length) {
+    // Don't fail the build — many "missing" deps are optional peerDependencies
+    // (is-unicode-supported, ora, log-symbols, etc.) that the runtime requires
+    // lazily inside try/catch. verifyAsar below is the real gate: it fails the
+    // build only if a module the app definitely needs is absent.
+    console.warn(`⚠ ensureProdNodeModules: ${missing.length} optional deps unresolved (likely hoisted/peer): ${missing.join(', ')}`);
+  }
 }
 
 exports.default = async function afterPack(context) {
-  // ── Verify packaged app has all critical modules (all platforms) ──
+  // ── 0. Force-copy production node_modules (works around electron-builder 26
+  //       stripping them from custom `files:` lists). All platforms. ──
+  ensureProdNodeModules(context);
+
+  // ── 1. Verify packaged app has all critical modules (all platforms) ──
   await verifyAsar(context);
 
   // ── macOS code-signing steps below ──
