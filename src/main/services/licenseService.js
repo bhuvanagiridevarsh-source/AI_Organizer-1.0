@@ -13,7 +13,42 @@
  *   if (license.canOrganizeFiles()) { ... }
  */
 
-const Store = require("electron-store");
+// electron-store: defensive load with a JSON-file fallback so a missing module
+// can never crash the app at boot. See src/main/index.js for the matching shim.
+let Store = null;
+try {
+  Store = require("electron-store");
+} catch (err) {
+  console.warn(`[licenseService] electron-store unavailable, using JSON fallback: ${err?.message}`);
+  const _fs = require("fs");
+  const _path = require("path");
+  const { app } = require("electron");
+  Store = class FallbackStore {
+    constructor({ name = "config" } = {}) {
+      const dir = app.getPath("userData");
+      try { _fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+      this._file = _path.join(dir, `${name}.json`);
+      try { this.store = JSON.parse(_fs.readFileSync(this._file, "utf-8")); }
+      catch { this.store = {}; }
+    }
+    _flush() {
+      try { _fs.writeFileSync(this._file, JSON.stringify(this.store, null, 2), "utf-8"); }
+      catch (e) { console.warn(`[FallbackStore] write failed: ${e.message}`); }
+    }
+    get(key, def) {
+      return Object.prototype.hasOwnProperty.call(this.store, key) ? this.store[key] : def;
+    }
+    set(key, value) {
+      if (typeof key === "object" && key !== null) Object.assign(this.store, key);
+      else this.store[key] = value;
+      this._flush();
+    }
+    has(key) { return Object.prototype.hasOwnProperty.call(this.store, key); }
+    delete(key) { delete this.store[key]; this._flush(); }
+    clear() { this.store = {}; this._flush(); }
+    get path() { return this._file; }
+  };
+}
 const https = require("https");
 
 // ── Configuration ──────────────────────────────────────────

@@ -30,6 +30,51 @@ files:
   # "Cannot find module electron-store/electron-updater"). Naming node_modules
   # here forces a literal copy, which is how the working local build behaved.
   - "node_modules/**/*"
+  # Defensive: name critical runtime modules + their transitive deps explicitly.
+  # If electron-builder's smart filtering ever strips node_modules again, these
+  # will still ship. Lists verified against actual node_modules tree.
+  - "node_modules/electron-store/**/*"
+  - "node_modules/electron-updater/**/*"
+  # electron-store → conf → ajv/ajv-formats/atomically/debounce-fn/dot-prop/
+  #   env-paths/json-schema-typed/onetime/pkg-up/semver
+  - "node_modules/conf/**/*"
+  - "node_modules/type-fest/**/*"
+  - "node_modules/dot-prop/**/*"
+  - "node_modules/env-paths/**/*"
+  - "node_modules/atomically/**/*"
+  - "node_modules/ajv/**/*"
+  - "node_modules/ajv-formats/**/*"
+  - "node_modules/json-schema-typed/**/*"
+  - "node_modules/onetime/**/*"
+  - "node_modules/mimic-fn/**/*"
+  - "node_modules/debounce-fn/**/*"
+  - "node_modules/pkg-up/**/*"
+  - "node_modules/find-up/**/*"
+  - "node_modules/locate-path/**/*"
+  - "node_modules/p-locate/**/*"
+  - "node_modules/p-limit/**/*"
+  - "node_modules/yocto-queue/**/*"
+  - "node_modules/path-exists/**/*"
+  - "node_modules/semver/**/*"
+  - "node_modules/uri-js/**/*"
+  - "node_modules/fast-deep-equal/**/*"
+  - "node_modules/json-schema-traverse/**/*"
+  # electron-updater deps
+  - "node_modules/fs-extra/**/*"
+  - "node_modules/js-yaml/**/*"
+  - "node_modules/lazy-val/**/*"
+  - "node_modules/lodash.escaperegexp/**/*"
+  - "node_modules/lodash.isequal/**/*"
+  - "node_modules/tiny-typed-emitter/**/*"
+  - "node_modules/builder-util-runtime/**/*"
+
+# Skip electron-builder's own rebuild step — package.json's postinstall runs
+# electron-rebuild explicitly for the native modules we care about
+# (node-llama-cpp, better-sqlite3). A second rebuild here doubles build time
+# and has historically interfered with the install tree on CI runners.
+npmRebuild: false
+# Disable building deps from source — they're already installed by `npm ci`.
+buildDependenciesFromSource: false
 
 # ── Source code protection ──
 asar: true

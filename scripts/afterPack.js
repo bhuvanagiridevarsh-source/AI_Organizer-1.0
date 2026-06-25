@@ -14,8 +14,55 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// Modules whose absence has historically broken the packaged app at boot.
+// Verified inside the asar after every build (all platforms) — see verifyAsar().
+const REQUIRED_MODULES = [
+  'electron-store',
+  'electron-updater',
+  'better-sqlite3',
+  'conf',          // transitive of electron-store, has crashed builds before
+  'adm-zip',
+  'mammoth',
+  'pdf-parse',
+  'tesseract.js',
+];
+
+async function verifyAsar(context) {
+  const asarPath = path.join(context.appOutDir,
+    context.electronPlatformName === 'darwin'
+      ? `${(context.packager.appInfo && context.packager.appInfo.productName) || 'System Janitor'}.app/Contents/Resources/app.asar`
+      : 'resources/app.asar'
+  );
+  if (!fs.existsSync(asarPath)) {
+    console.error(`❌ verifyAsar: app.asar not found at ${asarPath}`);
+    process.exit(1);
+  }
+  // Use @electron/asar (bundled inside electron-builder's deps) to list contents.
+  let asar;
+  try { asar = require('@electron/asar'); }
+  catch { try { asar = require('asar'); } catch (e) {
+    console.warn(`⚠ verifyAsar: asar lib unavailable (${e.message}) — skipping check`);
+    return;
+  }}
+  const entries = asar.listPackage(asarPath);
+  const missing = REQUIRED_MODULES.filter(m =>
+    !entries.some(e => e.startsWith(`/node_modules/${m}/`) || e === `/node_modules/${m}`)
+  );
+  if (missing.length) {
+    console.error('\n❌❌❌ verifyAsar FAILED — packaged app would crash at boot.');
+    console.error(`Missing modules in ${asarPath}:`);
+    missing.forEach(m => console.error(`   - ${m}`));
+    console.error('Fix electron-builder.yml `files:` so these ship, then rebuild.\n');
+    process.exit(1);
+  }
+  console.log(`✓ verifyAsar: all ${REQUIRED_MODULES.length} critical modules present in app.asar`);
+}
+
 exports.default = async function afterPack(context) {
-  // Only needed on macOS
+  // ── Verify packaged app has all critical modules (all platforms) ──
+  await verifyAsar(context);
+
+  // ── macOS code-signing steps below ──
   if (context.electronPlatformName !== 'darwin') return;
 
   // Find the .app bundle in the output dir (works regardless of product name)

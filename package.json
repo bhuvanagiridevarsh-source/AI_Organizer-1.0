@@ -1,11 +1,11 @@
 {
   "name": "system-janitor",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "AI-powered file organizer that runs entirely on your device",
   "author": "Devarsh Bhuvanagiri <bhuvanagiridevarsh@gmail.com>",
   "main": "src/main/index.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f -w node-llama-cpp",
+    "postinstall": "electron-rebuild -f -w node-llama-cpp,better-sqlite3",
     "dev": "electron .",
     "precompile": "echo Compiling TypeScript...",
     "compile": "node scripts/compile-ts.js",
@@ -17,13 +17,16 @@
     "build:mac:protected": "node scripts/build-protected.js --mac",
     "sign:mac": "bash scripts/sign-and-package.sh",
     "trace": "npx tsx scripts/trace-decision.ts",
-    "migrate": "npx tsx scripts/migrate-knowledge-graph.ts"
+    "migrate": "npx tsx scripts/migrate-knowledge-graph.ts",
+    "pretest": "node scripts/compile-ts.js",
+    "test": "node --test test/*.test.js"
   },
   "build": {
     "extends": "electron-builder.yml"
   },
   "dependencies": {
     "adm-zip": "0.5.16",
+    "better-sqlite3": "^11.5.0",
     "electron-store": "8.1.0",
     "electron-updater": "^6.8.3",
     "mammoth": "^1.11.0",

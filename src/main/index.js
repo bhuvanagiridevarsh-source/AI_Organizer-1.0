@@ -208,7 +208,46 @@ function saveLanConfig(cfg) {
 
 const { ensureModel, isModelDownloaded, getModelPath } = require("./engine/modelDownloader");
 const license = require("./services/licenseService");
-const Store   = require("electron-store");
+
+// electron-store: defensive load with a JSON-file fallback. In v1.0.5–1.0.7 some
+// packaged builds shipped without electron-store in node_modules, which crashed
+// the app at boot with "Cannot find module 'electron-store'". Now we load it
+// defensively and, if missing, fall back to a tiny disk-backed Store shim so
+// settings still persist and the app still boots. The shim is intentionally
+// minimal — get/set/has/delete/store — which is all the app actually uses.
+let Store = null;
+try {
+  Store = require("electron-store");
+} catch (err) {
+  console.warn(`[main] electron-store unavailable, using JSON fallback: ${err?.message}`);
+  const _fs = require("fs");
+  const _path = require("path");
+  Store = class FallbackStore {
+    constructor({ name = "config" } = {}) {
+      const dir = app.getPath("userData");
+      try { _fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+      this._file = _path.join(dir, `${name}.json`);
+      try { this.store = JSON.parse(_fs.readFileSync(this._file, "utf-8")); }
+      catch { this.store = {}; }
+    }
+    _flush() {
+      try { _fs.writeFileSync(this._file, JSON.stringify(this.store, null, 2), "utf-8"); }
+      catch (e) { console.warn(`[FallbackStore] write failed: ${e.message}`); }
+    }
+    get(key, def) {
+      return Object.prototype.hasOwnProperty.call(this.store, key) ? this.store[key] : def;
+    }
+    set(key, value) {
+      if (typeof key === "object" && key !== null) Object.assign(this.store, key);
+      else this.store[key] = value;
+      this._flush();
+    }
+    has(key) { return Object.prototype.hasOwnProperty.call(this.store, key); }
+    delete(key) { delete this.store[key]; this._flush(); }
+    clear() { this.store = {}; this._flush(); }
+    get path() { return this._file; }
+  };
+}
 const appSettingsStore = new Store({ name: "app-settings" });
 const { spawnSync } = require("child_process");
 const { safeMoveFile, scanUserFolders } = require("./services/fileService");
@@ -1408,547 +1447,27 @@ ipcMain.handle("pii:secure-move", async (_event, source, filename) => {
 // Only the Category Name is sent to the Datamuse "Related Meaning" API.
 // All matching happens locally against knowledge_base.json.
 
-// ── Global Concepts Pool helpers ──────────────────────────────
 
-/**
- * Read the global concepts pool from global_concepts.json.
- * Returns { "Category": ["word1", "word2", ...], ... } or {}.
- */
-function readGlobalPool(baseDir) {
-  const poolPath = path.join(baseDir, "global_concepts.json");
-  try {
-    if (fs.existsSync(poolPath)) {
-      return JSON.parse(fs.readFileSync(poolPath, "utf-8"));
-    }
-  } catch {}
-  return {};
-}
+// ── Global Concepts Pool helpers + Concept Expansion (extracted services) ─
+// These were ~535 lines of inline business logic in this entry point.
+// Now live in proper service modules under src/main/services/.
+const {
+  readGlobalPool,
+  writeGlobalPool,
+  filterPoolConcepts,
+  filterConceptsWithAI,
+  POOL_STOP_WORDS,
+} = require("./services/ConceptPoolService");
+const {
+  WIKI_STOP_WORDS,
+  fetchWikipediaConcepts,
+  expandCategoryName,
+  expandAcademicName,
+  fetchDeepRecursiveSearch,
+  fetchSemanticWeb,
+  fetchDatamuseConcepts,
+} = require("./services/ConceptExpansionService");
 
-/**
- * Write the global concepts pool to global_concepts.json.
- */
-function writeGlobalPool(baseDir, pool) {
-  const poolPath = path.join(baseDir, "global_concepts.json");
-  fs.writeFileSync(poolPath, JSON.stringify(pool, null, 2), "utf-8");
-}
-
-// ── Concept Pool Filtering (Anti-Pollution) ───────────────────
-// Catches garbage concepts from Datamuse word-association drift.
-
-/**
- * Generic terms that should NEVER appear in a subject-specific pool.
- * These are words Datamuse returns as "related" but carry zero signal.
- */
-const POOL_STOP_WORDS = new Set([
-  // Generic / structural
-  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
-  "with", "by", "from", "is", "are", "was", "were", "be", "been", "being",
-  "it", "its", "this", "that", "these", "those", "not", "no", "yes",
-  "part", "parts", "item", "items", "point", "points", "section", "sections",
-  "page", "pages", "chapter", "chapters", "heading", "subheading", "title",
-  "index", "category", "component", "figure", "topic", "aspect", "phase",
-  "stage", "frame", "subdivision", "division", "dichotomy",
-  // Books / publishing (word-association noise)
-  "book", "booklet", "binder", "cahier", "scrapbook", "magazine", "notebook",
-  "sketchbook", "pamphlet", "bookshop", "bookstore", "manuscript", "brochure",
-  "cookbook", "journal", "diary", "guidebook", "edition", "publishing",
-  "calligraphy", "written", "editing", "published", "publish", "writing",
-  "daybook", "record", "script", "playscript", "ledger", "account book",
-  "volume", "reserve", "hold", "leger", "book of account",
-  // Sewing / textile (word-association noise from "stitch")
-  "sew together", "sewing", "buttonhole", "mesh", "skin", "suture",
-  "juncture", "overcasting", "darn", "mend", "baste", "weave", "loop",
-  "fasten", "run up", "seam", "tack", "embroider", "knit", "crochet",
-  "chainstitch", "overcast", "whipstitch", "lockstitch", "patch", "textile",
-  // Body parts (word-association noise from "arm")
-  "branch", "sleeve", "gird", "weapon", "fortify", "build up",
-  "weapon system", "armpit", "forearm", "forelimb", "limb", "elbow",
-  "hand", "tooth", "muscle", "bind",
-  // Relationships (word-association noise from "chemistry")
-  "interpersonal chemistry", "relationship", "interactions", "relationships",
-  "interaction", "friendship", "camaraderie", "personality", "friendships",
-  "charisma", "communication", "interrelationship", "charismatic",
-  "congeniality", "communicative", "sociability", "sociality",
-  "interpersonally", "intercommunication", "interpersonal skills",
-  "human relationship", "physical attraction", "social intercourse",
-  "personal magnetism", "magnetic attraction", "friendly relationship",
-  "communicativeness", "companionability",
-  // Screen / image (word-association noise)
-  "pickup", "image", "picture", "display", "screen", "capture", "catch",
-  "capturing", "screengrab", "snapshot", "screen motion capture",
-  "loading screen", "screensaver", "screen-scraper", "workscreen",
-  "touch screen", "lock screen", "split screen", "savefile", "desktop picture",
-  // Music (word-association noise)
-  "composition", "piece", "musical composition", "piece of music",
-  "opposite", "opposition", "creation", "oeuvre", "masterpiece",
-  "production", "rhapsody", "fantasia", "cantata",
-  // Photography (word-association noise)
-  "photo", "profile", "portrait", "footage", "photograph", "pictures",
-  "form", "photos", "global image", "gram", "graphic", "gifset",
-  "'gram", "gravatar", "gimp", "visual", "anigif", "geotag",
-  "graymap", "gpmg",
-  // Deep / abstract (word-association noise from biology "deep")
-  "profound", "large", "distant", "recondite", "heavy", "intense",
-  "abstruse", "cryptic", "sound", "cryptical", "low-pitched",
-  "mystifying", "inscrutable", "late", "mysterious", "artful",
-  "thick", "esoteric", "rich", "bottomless", "incomprehensible",
-  "inexplicable", "unfathomed", "unsounded", "wakeless", "unplumbed",
-  "colorful",
-  // Release / discharge (word-association noise)
-  "loose", "liberate", "liberation", "unloose", "expel", "discharge",
-  "dismissal", "eject", "unblock", "departure", "exit", "relinquish",
-  "give up", "expiration", "waiver", "secrete", "loss", "let go",
-  "acquittance", "turn", "bring out", "passing", "issue", "going",
-  "outlet", "spillage", "spill", "free", "handout",
-  // Offers / proposals (word-association noise)
-  "proffer", "offer up", "propose", "provide", "volunteer", "pass",
-  "extend", "put up", "tender", "propose marriage", "pop the question",
-  "fling", "whirl", "crack", "offeror", "proposition", "proposal",
-  "bidding", "afford", "invitation",
-  // Space / void (word-association noise)
-  "blank", "place", "distance", "topological space", "outer space",
-  "quad", "blank space", "outer", "term", "clearance", "empty",
-  "upright", "vacuum", "void", "discretion", "placeholder", "espace",
-  "opportunity", "seating", "flexibility", "seat", "scope",
-  // Elections / candidates (word-association noise)
-  "nominee", "campaigner", "prospect", "candidacy", "candidature",
-  "election", "membership", "appointment", "appointee", "trainee",
-  "nomination", "appellant", "proponent", "nominated", "applicant",
-  "eligible", "accession", "bidder", "participant", "received",
-  "interviewee", "applying", "investigator", "application",
-  // Tests / trials (word-association noise)
-  "try out", "examine", "trial", "experimental", "prove", "assay",
-  "quiz", "tryout", "empirical", "model", "pilot", "check",
-  "mental test", "mental testing", "psychometric test", "inspect", "detect",
-  // Page-related (word-association noise)
-  "pageboy", "varlet", "acton", "aspects", "beeps", "bellboys",
-  "corporate", "headlines", "homepage", "impressions", "leafs", "leaves",
-  "length", "listings", "parties", "pubs", "quarters", "screens",
-  "seiten", "sheets", "shores", "sides", "site", "sites", "slides",
-  // Conversion / change (word-association noise)
-  "change over", "change", "exchange", "win over", "convince",
-  "commute", "alter", "transform", "transformer", "conversion",
-  "transforming", "changeover", "transpose", "convertible", "process",
-  // Generic academic
-  "academic", "academics", "acad", "acad.", "honor student", "preppy",
-  "highschool", "high school", "upper school", "prep school",
-  // Common noise words
-  "management", "the", "general", "related", "department", "continued",
-  "depending", "considered", "engaged", "activities", "applies",
-]);
-
-/**
- * Filter concepts: remove stop words, too-short terms, and cross-category duplicates.
- * @param {string} category - The category name
- * @param {string[]} concepts - Raw concepts to filter
- * @param {Object} fullPool - The entire pool (for cross-category dedup)
- * @returns {string[]} Filtered concepts
- */
-function filterPoolConcepts(category, concepts, fullPool) {
-  const catLower = category.toLowerCase();
-
-  // Build cross-category frequency map
-  const crossFreq = {};
-  for (const [cat, catConcepts] of Object.entries(fullPool)) {
-    if (cat.toLowerCase() === catLower) continue;
-    for (const c of catConcepts) {
-      const k = c.toLowerCase();
-      crossFreq[k] = (crossFreq[k] || 0) + 1;
-    }
-  }
-
-  return concepts.filter((concept) => {
-    const lower = concept.toLowerCase().trim();
-
-    // Remove empty or too-short
-    if (lower.length < 3) return false;
-
-    // Remove stop words
-    if (POOL_STOP_WORDS.has(lower)) return false;
-
-    // Remove single generic words that appear in 3+ OTHER categories
-    if ((crossFreq[lower] || 0) >= 3 && !lower.includes(" ")) return false;
-
-    // Remove concepts that are just numbers
-    if (/^\d+$/.test(lower)) return false;
-
-    return true;
-  });
-}
-
-/**
- * Use Ollama to validate concepts for a category.
- * Sends concepts in a batch and asks the LLM which ones are actually relevant.
- * Falls back to basic filtering if Ollama is unavailable.
- */
-async function filterConceptsWithAI(category, concepts) {
-  // Only filter if we have a reasonable number of concepts
-  if (concepts.length === 0) return concepts;
-
-  // Batch into chunks of 80 to avoid prompt size issues
-  const BATCH_SIZE = 80;
-  const validated = [];
-
-  for (let i = 0; i < concepts.length; i += BATCH_SIZE) {
-    const batch = concepts.slice(i, i + BATCH_SIZE);
-    const numbered = batch.map((c, idx) => `${idx + 1}. ${c}`).join("\n");
-
-    const prompt = `You are a strict academic concept validator. Given the subject "${category}", determine which of these terms are DIRECTLY relevant to studying or working with "${category}".
-
-TERMS:
-${numbered}
-
-RULES:
-- KEEP terms that are specific to "${category}" (subtopics, key concepts, techniques, vocabulary)
-- REMOVE terms that are generic (e.g., "management", "study", "school", "book")
-- REMOVE terms that belong to unrelated fields
-- REMOVE terms that are nonsensical or word-association noise
-- REMOVE terms in foreign languages unless they are standard terminology for "${category}"
-- REMOVE terms related to body parts, sewing, photography, music, relationships unless directly relevant
-
-Respond with ONLY a JSON array of the KEPT term numbers. Example: [1, 3, 5, 8]
-If none are relevant, respond: []`;
-
-    try {
-      const LlamaService = require("./services/LlamaService");
-      const result = LlamaService.isReady()
-        ? await LlamaService.generate(prompt, { maxTokens: 500, temperature: 0.1, timeoutMs: 30_000 })
-        : "";
-
-      // Parse the response — extract the JSON array of indices
-      const match = String(result).match(/\[[\d,\s]*\]/);
-      if (match) {
-        const indices = JSON.parse(match[0]);
-        for (const idx of indices) {
-          if (typeof idx === "number" && idx >= 1 && idx <= batch.length) {
-            validated.push(batch[idx - 1]);
-          }
-        }
-      } else {
-        // AI response wasn't parseable — keep the batch (filtered by basic rules)
-        validated.push(...batch);
-      }
-    } catch {
-      // Model unavailable — keep the batch
-      validated.push(...batch);
-    }
-  }
-
-  console.log(`[main] AI Filter: "${category}" — ${concepts.length} → ${validated.length} concepts (${concepts.length - validated.length} removed)`);
-  return validated;
-}
-
-// ── Stopwords for Wikipedia keyword extraction ────────────────
-const WIKI_STOP_WORDS = new Set([
-  "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
-  "from","is","are","was","were","be","been","being","have","has","had",
-  "do","does","did","will","would","could","should","shall","may","might",
-  "can","this","that","these","those","it","its","i","me","my","we","our",
-  "you","your","he","him","his","she","her","they","them","their","not",
-  "no","so","if","then","than","when","where","how","what","which","who",
-  "all","each","every","both","few","more","most","some","any","many",
-  "much","such","very","just","also","into","over","after","before",
-  "about","as","up","out","one","two","new","used","first","other",
-  "known","often","well","part","may","use","between","since","while",
-]);
-
-/**
- * Fetch Wikipedia summary for a category and extract keywords.
- * Uses the Wikipedia REST API (page/summary endpoint).
- * PRIVACY: Only the category name is sent.
- */
-function fetchWikipediaConcepts(category) {
-  return new Promise((resolve) => {
-    const encoded = encodeURIComponent(category.replace(/\s+/g, "_"));
-    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`;
-
-    https.get(url, { headers: { "User-Agent": "AIOrganizer/1.0" } }, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          const extract = parsed.extract || "";
-          // Split extract into words, filter stopwords, keep words >= 3 chars
-          const words = extract
-            .toLowerCase()
-            .replace(/[^a-z\s]/g, " ")
-            .split(/\s+/)
-            .filter((w) => w.length >= 3 && !WIKI_STOP_WORDS.has(w));
-          // Deduplicate
-          const unique = [...new Set(words)];
-          console.log(
-            `[main] Wikipedia returned ${unique.length} keywords for "${category}": ` +
-            `[${unique.slice(0, 10).join(", ")}${unique.length > 10 ? "..." : ""}]`
-          );
-          resolve(unique);
-        } catch {
-          resolve([]);
-        }
-      });
-      res.on("error", () => resolve([]));
-    }).on("error", () => resolve([]));
-  });
-}
-
-/**
- * Concept Expansion: expand short/abbreviated category names to full-form.
- * Uses Datamuse "sp" (spelled like) + "ml" (means like) to find
- * longer-form candidates for short inputs (e.g. "Bio" → "Biology").
- *
- * PRIVACY: Only the category name is sent to Datamuse.
- * Safeguard: If API fails, returns the original name unchanged.
- */
-function expandCategoryName(shortName) {
-  return new Promise((resolve) => {
-    // If the name is already long (>= 6 chars), skip expansion
-    if (shortName.length >= 6) {
-      resolve(shortName);
-      return;
-    }
-
-    const encoded = encodeURIComponent(shortName);
-    const url = `https://api.datamuse.com/words?sp=${encoded}*&ml=${encoded}&max=10`;
-
-    https.get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (!Array.isArray(parsed) || parsed.length === 0) {
-            resolve(shortName);
-            return;
-          }
-          // Pick the highest-score candidate that starts with the short name (case-insensitive)
-          const prefix = shortName.toLowerCase();
-          const candidates = parsed
-            .filter((e) => e.word && e.word.toLowerCase().startsWith(prefix) && e.word.length > shortName.length)
-            .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-          if (candidates.length > 0) {
-            // Capitalize first letter
-            const expanded = candidates[0].word.charAt(0).toUpperCase() + candidates[0].word.slice(1);
-            console.log(`[main] Concept Expansion: "${shortName}" → "${expanded}"`);
-            resolve(expanded);
-          } else {
-            resolve(shortName);
-          }
-        } catch {
-          resolve(shortName);
-        }
-      });
-      res.on("error", () => resolve(shortName));
-    }).on("error", () => resolve(shortName));
-  });
-}
-
-/**
- * Academic Acronym Expansion: expand academic abbreviations via Wikipedia.
- * "APUSH" → Wikipedia search → "AP United States History"
- * Uses Wikipedia's REST API which handles redirects automatically.
- *
- * PRIVACY: Only the category name is sent to Wikipedia.
- * Safeguard: If API fails, falls back to expandCategoryName() (Datamuse).
- */
-function expandAcademicName(name) {
-  return new Promise((resolve) => {
-    // If the name is already long (>= 12 chars), skip academic expansion
-    if (name.length >= 12) {
-      resolve(name);
-      return;
-    }
-
-    const encoded = encodeURIComponent(name.replace(/\s+/g, "_"));
-    const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`;
-
-    https.get(url, { headers: { "User-Agent": "AIOrganizer/1.0" } }, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          // Wikipedia returns the canonical title, which resolves redirects
-          // e.g., "APUSH" redirects to "AP United States History"
-          const title = parsed.title || "";
-          if (
-            title &&
-            title.toLowerCase() !== name.toLowerCase() &&
-            title.length > name.length
-          ) {
-            console.log(`[main] Academic Expansion: "${name}" → "${title}" (via Wikipedia)`);
-            resolve(title);
-            return;
-          }
-          // No useful expansion from Wikipedia — fall through
-          resolve(null);
-        } catch {
-          resolve(null);
-        }
-      });
-      res.on("error", () => resolve(null));
-    }).on("error", () => resolve(null));
-  });
-}
-
-/**
- * Deep Recursive Search: Force-expand a category until the pool has >100 keywords.
- *
- * PIPELINE:
- *   Pass 1 — Fetch top 30 related concepts for the category (the "trunk").
- *   Pass 2 (The Expander) — Take the top 5 results from Pass 1 and run
- *     each as a NEW query, biased by the original category topic.
- *     This is Level 2 expansion.
- *
- * CONTEXT FILTER: Pass 2 queries use Datamuse's `topics` parameter set to
- *   the original category, so results stay within the relevant domain
- *   (e.g., "Marketing" biased by "FBLA" returns business marketing, not medical).
- *
- * TARGET: Do not stop until the pool has >100 unique keywords (or Level 2 exhausted).
- * SAFEGUARD: Depth limit = Level 2. Max 5 expansion branches. Max 30 per query.
- * PRIVACY: Only the category name and derived sub-terms are sent to Datamuse API.
- *          NO file content is ever uploaded.
- *
- * @param {string} category — The category name (already expanded if applicable).
- * @param {function} onProgress — Callback(currentCount, target) for live progress.
- * @returns {Promise<string[]>} — Flat deduplicated array of concepts.
- */
-async function fetchDeepRecursiveSearch(category, onProgress) {
-  const TARGET = 100;
-  const allConcepts = new Set();
-
-  // Helper: fetch from Datamuse with optional topic bias for context filtering
-  function fetchBiased(term, max, topic) {
-    return new Promise((resolve) => {
-      let url = `https://api.datamuse.com/words?ml=${encodeURIComponent(term)}&max=${max}`;
-      if (topic) url += `&topics=${encodeURIComponent(topic)}`;
-      https.get(url, (res) => {
-        let data = "";
-        res.on("data", (chunk) => { data += chunk; });
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve(Array.isArray(parsed) ? parsed.map((e) => e.word).filter(Boolean) : []);
-          } catch { resolve([]); }
-        });
-        res.on("error", () => resolve([]));
-      }).on("error", () => resolve([]));
-    });
-  }
-
-  // ── Pass 1: Fetch 30 broad concepts (the trunk) ──
-  const pass1 = await fetchBiased(category, 30, null);
-  for (const w of pass1) allConcepts.add(w.toLowerCase());
-  console.log(`[main] Deep Recursive Pass 1 for "${category}": ${pass1.length} concepts`);
-  if (onProgress) onProgress(allConcepts.size, TARGET);
-
-  if (allConcepts.size >= TARGET) return [...allConcepts];
-
-  // ── Pass 2 (The Expander): Top 5 from Pass 1 → new queries ──
-  // Each sub-query is biased by the original category for context filtering.
-  // DEPTH LIMIT: Level 2. We do NOT recurse further.
-  const expandTerms = pass1
-    .filter((w) => w.toLowerCase() !== category.toLowerCase() && w.length >= 4)
-    .slice(0, 5);
-
-  console.log(`[main] Deep Recursive Pass 2 — expanding: [${expandTerms.join(", ")}]`);
-
-  for (const term of expandTerms) {
-    const pass2 = await fetchBiased(term, 30, category);
-    for (const w of pass2) allConcepts.add(w.toLowerCase());
-    if (onProgress) onProgress(allConcepts.size, TARGET);
-    console.log(`[main]   "${term}" → +${pass2.length} concepts (total: ${allConcepts.size})`);
-    if (allConcepts.size >= TARGET) break;
-  }
-
-  // DEPTH LIMIT REACHED (Level 2). Stop recursive expansion.
-  if (onProgress) onProgress(allConcepts.size, TARGET);
-  console.log(
-    `[main] Deep Recursive Search complete for "${category}": ${allConcepts.size} concepts ` +
-    `(target: ${TARGET}, ${allConcepts.size >= TARGET ? "REACHED" : "best effort"})`
-  );
-
-  return [...allConcepts];
-}
-
-/**
- * Semantic Web Download: fetch 3 layers of keywords for a category.
- *   Layer 1 — Synonyms (rel_syn): "Biology" → "life science", "bioscience"
- *   Layer 2 — Components/Triggers (rel_trg): "Biology" → "cell", "dna", "tissue"
- *   Layer 3 — Associated Adjectives (rel_jja): "Biology" → "molecular", "marine"
- *
- * All 3 queries run in parallel. Returns a flat deduplicated array.
- * PRIVACY: Only the expanded category name is sent.
- */
-function fetchSemanticWeb(expandedName) {
-  function fetchDatamuseRel(rel, term) {
-    return new Promise((resolve) => {
-      const encoded = encodeURIComponent(term);
-      const url = `https://api.datamuse.com/words?${rel}=${encoded}&max=30`;
-      https.get(url, (res) => {
-        let data = "";
-        res.on("data", (chunk) => { data += chunk; });
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(data);
-            const words = Array.isArray(parsed)
-              ? parsed.map((e) => e.word).filter(Boolean)
-              : [];
-            resolve(words);
-          } catch { resolve([]); }
-        });
-        res.on("error", () => resolve([]));
-      }).on("error", () => resolve([]));
-    });
-  }
-
-  return Promise.all([
-    fetchDatamuseRel("rel_syn", expandedName),  // Synonyms
-    fetchDatamuseRel("rel_trg", expandedName),  // Components / triggers
-    fetchDatamuseRel("rel_jja", expandedName),  // Associated adjectives
-  ]).then(([synonyms, components, adjectives]) => {
-    const all = [...new Set([...synonyms, ...components, ...adjectives])];
-    console.log(
-      `[main] Semantic Web for "${expandedName}": synonyms=${synonyms.length}, ` +
-      `components=${components.length}, adjectives=${adjectives.length}, combined=${all.length}`
-    );
-    return all;
-  });
-}
-
-/**
- * Fetch semantically related words from Datamuse for a given category name.
- * Uses the "ml" (means like) parameter for related-meaning lookup.
- * Returns an array of word strings (max 50).
- */
-function fetchDatamuseConcepts(category) {
-  return new Promise((resolve, reject) => {
-    const encoded = encodeURIComponent(category);
-    const url = `https://api.datamuse.com/words?ml=${encoded}&max=50`;
-
-    https.get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          // Datamuse returns [{ word: "...", score: N }, ...]
-          const words = Array.isArray(parsed)
-            ? parsed.map((entry) => entry.word).filter(Boolean)
-            : [];
-          console.log(
-            `[main] Datamuse returned ${words.length} concepts for "${category}": ` +
-            `[${words.slice(0, 10).join(", ")}${words.length > 10 ? "..." : ""}]`
-          );
-          resolve(words);
-        } catch (err) {
-          reject(err);
-        }
-      });
-      res.on("error", reject);
-    }).on("error", reject);
-  });
-}
 
 /**
  * Learn semantic concepts for a category and save to knowledge_base.json.
