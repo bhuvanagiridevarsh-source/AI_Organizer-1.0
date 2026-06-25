@@ -5,7 +5,7 @@
   "author": "Devarsh Bhuvanagiri <bhuvanagiridevarsh@gmail.com>",
   "main": "src/main/index.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f -w node-llama-cpp,better-sqlite3",
+    "postinstall": "electron-rebuild -f -w node-llama-cpp",
     "dev": "electron .",
     "precompile": "echo Compiling TypeScript...",
     "compile": "node scripts/compile-ts.js",
@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "adm-zip": "0.5.16",
-    "better-sqlite3": "^11.5.0",
     "electron-store": "8.1.0",
     "electron-updater": "^6.8.3",
     "mammoth": "^1.11.0",

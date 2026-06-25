@@ -16,10 +16,11 @@ const fs = require('fs');
 
 // Modules whose absence has historically broken the packaged app at boot.
 // Verified inside the asar after every build (all platforms) — see verifyAsar().
+// NOTE: better-sqlite3 was intentionally removed — DatabaseService has a
+// JSON fallback and shipping a native build broke Electron-40 V8 13.
 const REQUIRED_MODULES = [
   'electron-store',
   'electron-updater',
-  'better-sqlite3',
   'conf',          // transitive of electron-store, has crashed builds before
   'adm-zip',
   'mammoth',
@@ -45,17 +46,25 @@ async function verifyAsar(context) {
     return;
   }}
   const entries = asar.listPackage(asarPath);
+  // Also check app.asar.unpacked/ — native modules (better-sqlite3, node-llama-cpp)
+  // live there because .node files can't reliably dlopen from inside an asar.
+  const unpackedDir = asarPath + '.unpacked';
+  const unpackedHas = (m) => {
+    try { return fs.existsSync(path.join(unpackedDir, 'node_modules', m)); }
+    catch { return false; }
+  };
   const missing = REQUIRED_MODULES.filter(m =>
     !entries.some(e => e.startsWith(`/node_modules/${m}/`) || e === `/node_modules/${m}`)
+    && !unpackedHas(m)
   );
   if (missing.length) {
     console.error('\n❌❌❌ verifyAsar FAILED — packaged app would crash at boot.');
-    console.error(`Missing modules in ${asarPath}:`);
+    console.error(`Missing modules in ${asarPath} (and .unpacked):`);
     missing.forEach(m => console.error(`   - ${m}`));
     console.error('Fix electron-builder.yml `files:` so these ship, then rebuild.\n');
     process.exit(1);
   }
-  console.log(`✓ verifyAsar: all ${REQUIRED_MODULES.length} critical modules present in app.asar`);
+  console.log(`✓ verifyAsar: all ${REQUIRED_MODULES.length} critical modules present (asar + unpacked)`);
 }
 
 exports.default = async function afterPack(context) {
