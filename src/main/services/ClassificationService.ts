@@ -3294,29 +3294,45 @@ function parseResponse(
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Classify a single file through the Specificity Waterfall:
+ * Shared context passed into `runClassificationWaterfall`.  Lets callers
+ * pre-load expensive corpus data once (e.g. for batch runs) instead of
+ * paying that cost per file.
+ */
+interface WaterfallContext {
+  userFolders:    string[];
+  rawFingerprints: Awaited<ReturnType<typeof getFolderContext>>;
+  folderContext:  Awaited<ReturnType<typeof getFolderContextForPrompt>>;
+  targetDir:      string;
+  /** Populate `second_category` for the disambiguation UI. */
+  includeRunnerUp: boolean;
+}
+
+/**
+ * Single-file classification implementing the Specificity Waterfall:
  *
  *   0. Archives Ban   — disqualify noise folders for recent files
  *   1. Bullseye       — instant token match (100 %, zero AI)
  *   2. Specific Match — Global Domain + AI chain-of-thought
  *   3. Broad Fallback — domain → parent folder suggestion
+ *
+ * This function was previously duplicated as a near-verbatim 370-line
+ * inner loop inside `classifyBatch`.  Both callers now route through
+ * `runClassificationWaterfall` to keep the waterfall behavior in one place.
  */
-export async function classifyFile(
+async function runClassificationWaterfall(
   filePath: string,
-  targetDir: string
+  ctx: WaterfallContext
 ): Promise<ClassificationResult> {
-  // ── Phase 0: load everything in parallel ──────────────────
-  const [userFolders, rawFingerprints, folderContext, fileContent, fileMetadata] =
-    await Promise.all([
-      scanUserFolders(targetDir),
-      getFolderContext(targetDir),
-      getFolderContextForPrompt(targetDir),
-      sampleFileContent(filePath),
-      extractMetadata(filePath),   // FIX 1: PDF/DOCX metadata signals
-    ]);
+  const { userFolders, rawFingerprints, folderContext, targetDir, includeRunnerUp } = ctx;
 
   const filename = path.basename(filePath);
   const extension = path.extname(filePath).toLowerCase();
+
+  // Per-file content + metadata (always per-file, even in batch mode)
+  const [fileContent, fileMetadata] = await Promise.all([
+    sampleFileContent(filePath),
+    extractMetadata(filePath),
+  ]);
 
   // ── PRE-CHECK: Folder name literally in filename ────────────
   // Strongest possible signal — no AI needed. Handles "PreCalc" ↔ "Pre-Calc"
@@ -3613,7 +3629,8 @@ export async function classifyFile(
     // ── Attach runner-up for disambiguation pipeline ─────────────────────
     // Find the highest-scoring pool category that differs from the primary pick.
     // This gives the UI a second candidate when confidence < 80%.
-    {
+    // Skipped for batch mode — batch results don't drive the disambiguation UI.
+    if (includeRunnerUp) {
       const runnerUp = poolScores.find(
         (s) => s.folder.toLowerCase() !== consensusResult.category.toLowerCase()
       );
@@ -3716,10 +3733,39 @@ export async function classifyFile(
 }
 
 /**
+ * Public single-file classifier.  Thin wrapper that loads the per-target
+ * corpus once and dispatches to `runClassificationWaterfall` with
+ * `includeRunnerUp: true` (the disambiguation UI needs the second pick).
+ */
+export async function classifyFile(
+  filePath: string,
+  targetDir: string
+): Promise<ClassificationResult> {
+  const [userFolders, rawFingerprints, folderContext] = await Promise.all([
+    scanUserFolders(targetDir),
+    getFolderContext(targetDir),
+    getFolderContextForPrompt(targetDir),
+  ]);
+  return runClassificationWaterfall(filePath, {
+    userFolders,
+    rawFingerprints,
+    folderContext,
+    targetDir,
+    includeRunnerUp: true,
+  });
+}
+
+/**
  * Classify multiple files.
  *
- * Fingerprints are built once; each file still gets its own
- * waterfall run (Bullseye → Specific → Broad).
+ * Fingerprints + folder context are built ONCE for the whole batch and
+ * reused per file.  Each file still gets its own full waterfall run
+ * (Bullseye → Specific → Broad) via the shared `runClassificationWaterfall`.
+ *
+ * Previously this function contained a 370-line copy of the single-file
+ * waterfall, which had silently drifted from `classifyFile` in several
+ * places (different "Needs Review" reasoning string, no runner-up, etc.).
+ * The dedup eliminates that drift risk.
  */
 export async function classifyBatch(
   filePaths: string[],
@@ -3731,367 +3777,25 @@ export async function classifyBatch(
     getFolderContextForPrompt(targetDir),
   ]);
 
+  const ctx: WaterfallContext = {
+    userFolders,
+    rawFingerprints,
+    folderContext,
+    targetDir,
+    // Batch results don't drive the disambiguation UI; skip runner-up
+    // computation to save the pool re-scoring work per file.
+    includeRunnerUp: false,
+  };
+
+  // Sequential per-file (each file may make AI / network calls and we don't
+  // want to overwhelm the local Llama instance with parallel requests).
   const results: ClassificationResult[] = [];
-
   for (const filePath of filePaths) {
-    const filename = path.basename(filePath);
-    const extension = path.extname(filePath).toLowerCase();
-    // FIX 1+2: extract full 15k-word content and PDF/DOCX metadata in parallel
-    const [fileContent, fileMetadata] = await Promise.all([
-      sampleFileContent(filePath),
-      extractMetadata(filePath),
-    ]);
-
-    // PRE-CHECK: Folder name literally in filename (same logic as classifyFile)
-    {
-      const filenamePlain = filename.toLowerCase().replace(/\.[^.]+$/, "").replace(/[-_\s+.]/g, "");
-      let preCheckHit: ClassificationResult | null = null;
-      for (const folder of userFolders) {
-        if (isNoiseFolderName(folder)) continue;
-        const folderPlain = folder.toLowerCase().replace(/[-_\s+.]/g, "");
-        if (folderPlain.length >= 4 && filenamePlain.includes(folderPlain)) {
-          preCheckHit = {
-            category: folder,
-            confidence: 100,
-            reasoning: `FILENAME MATCH: folder name "${folder}" found verbatim in filename "${filename}"`,
-            isNewFolder: false,
-            detected_concepts: [folder],
-            concept_abstraction: `Folder name found in filename`,
-            requires_review: false,
-            was_noise_penalized: false,
-            global_domain: "",
-            global_subdomain: "",
-            suggested_path: "",
-            match_level: "bullseye",
-          };
-          break;
-        }
-      }
-      if (preCheckHit) {
-        results.push(preCheckHit);
-        logResult(filename, fileContent, preCheckHit);
-        continue;
-      }
-    }
-
-    // ── CONSISTENCY SERVICE CHECK (batch) ────────────────────────────────
-    // Mirrors the single-file pipeline: fire history-based pre-classification
-    // before the main AI waterfall. Zero network, zero AI calls.
-    {
-      const historyBoost = getHistoryBoost(filename, userFolders);
-      if (historyBoost) {
-        const consistencyResult: ClassificationResult = {
-          category: historyBoost.folder,
-          confidence: historyBoost.confidence,
-          reasoning:
-            `HISTORY MATCH: class key "${historyBoost.matchedKey}" was previously ` +
-            `classified to "${historyBoost.folder}" ${historyBoost.hitCount} time(s)`,
-          isNewFolder: false,
-          detected_concepts: [historyBoost.matchedKey],
-          concept_abstraction: `History pattern match`,
-          requires_review: false,
-          was_noise_penalized: false,
-          global_domain: "",
-          global_subdomain: "",
-          suggested_path: "",
-          match_level: "specific",
-        };
-        results.push(consistencyResult);
-        logResult(filename, fileContent, consistencyResult);
-        continue;
-      }
-    }
-
-    // ── DISAMBIGUATION RULES CHECK (batch) ───────────────────────────────
-    // Auto-generated rules from confusion matrix data. Mirrors single-file pipeline.
-    {
-      const disambig = applyDisambiguationRules(filename, fileContent);
-      if (disambig && userFolders.some((f) => f.toLowerCase() === disambig.folder.toLowerCase())) {
-        const actualFolder =
-          userFolders.find((f) => f.toLowerCase() === disambig.folder.toLowerCase()) ??
-          disambig.folder;
-        const disambigResult: ClassificationResult = {
-          category: actualFolder,
-          confidence: disambig.confidence,
-          reasoning:
-            `DISAMBIGUATION RULE: "${actualFolder}" matched ` +
-            `${disambig.rule.a_indicators.length + disambig.rule.b_indicators.length} ` +
-            `exclusive indicators (auto-generated from confusion history)`,
-          isNewFolder: false,
-          detected_concepts: disambig.rule.a_indicators.slice(0, 5),
-          concept_abstraction: `Disambiguation rule match`,
-          requires_review: false,
-          was_noise_penalized: false,
-          global_domain: "",
-          global_subdomain: "",
-          suggested_path: "",
-          match_level: "specific",
-        };
-        results.push(disambigResult);
-        logResult(filename, fileContent, disambigResult);
-        continue;
-      }
-    }
-
-    // Archives Ban (per-file)
-    let activeFolders: string[] = userFolders;
-    if (isFileRecent(filePath)) {
-      activeFolders = userFolders.filter((f) => !isNoiseFolderName(f));
-    }
-
-    // Step 0.5: Metadata Bullseye (FIX 1)
-    if (fileMetadata) {
-      const metaBullseye = tryMetadataBullseye(fileMetadata, activeFolders, rawFingerprints, filename);
-      if (metaBullseye) {
-        results.push(metaBullseye);
-        logResult(filename, fileContent, metaBullseye);
-        continue;
-      }
-    }
-
-    // Step 1: Bullseye
-    const bullseye = tryBullseyeMatch(
-      filename,
-      fileContent,
-      rawFingerprints,
-      activeFolders
-    );
-    if (bullseye) {
-      results.push(bullseye);
-      logResult(filename, fileContent, bullseye);
-      continue;
-    }
-
-    // Step 1.5: Keyword Map (hardcoded rules)
-    const keywordHit = tryKeywordMatch(filename, fileContent, activeFolders);
-    if (keywordHit) {
-      results.push(keywordHit);
-      logResult(filename, fileContent, keywordHit);
-      continue;
-    }
-
-    // Step 1.75: Smart Groups (dynamic, zero config)
-    const smartHit = trySmartGroupMatch(filename, fileContent, activeFolders);
-    if (smartHit) {
-      results.push(smartHit);
-      logResult(filename, fileContent, smartHit);
-      continue;
-    }
-
-    // Step 1.85: Pool Match (global_concepts.json + knowledge_base.json)
-    const poolHit = tryPoolMatch(filename, fileContent, activeFolders, targetDir);
-    if (poolHit) {
-      // Conflict Detection: before returning pool hit, check for multi-category conflicts
-      const conflict = detectPoolConflicts(filename, fileContent, activeFolders, targetDir);
-      if (conflict) {
-        results.push(conflict);
-        logResult(filename, fileContent, conflict);
-        continue;
-      }
-      results.push(poolHit);
-      logResult(filename, fileContent, poolHit);
-      continue;
-    }
-
-    // Step 1.9: Internet Retry (only if pool match failed)
-    try {
-      const internetHit = await tryInternetRetry(filename, fileContent, activeFolders, targetDir);
-      if (internetHit) {
-        results.push(internetHit);
-        logResult(filename, fileContent, internetHit);
-        continue;
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    // Step 1.95: Deep Link Match (reverse Datamuse lookup)
-    try {
-      const deepLinkHit = await tryDeepLinkMatch(filename, fileContent, activeFolders, targetDir);
-      if (deepLinkHit) {
-        results.push(deepLinkHit);
-        logResult(filename, fileContent, deepLinkHit);
-        continue;
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    // Step 1.97: Entity Recognition (Wikipedia-backed)
-    try {
-      const entityHit = await tryEntityRecognition(filename, fileContent, activeFolders, targetDir);
-      if (entityHit) {
-        results.push(entityHit);
-        logResult(filename, fileContent, entityHit);
-        continue;
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    // Step 1.98: Sibling signal (FIX 3)
-    let batchSiblingSignal: { folder: string; boost: number; count: number } | null = null;
-    try {
-      batchSiblingSignal = await trySiblingSignal(filename, filePath, activeFolders);
-    } catch {}
-
-    // Step 2: Specific Match (v2 CoT prompt)
-    let globalDomain: GlobalDomainResult | null = null;
-    try {
-      globalDomain = await classifyGlobalDomain(filename, extension, fileContent);
-    } catch {
-      // Non-fatal
-    }
-
-    // FIX 5: pool signals for consensus
-    const batchPoolScores = scoreAllPoolCategories(filename, fileContent, activeFolders, targetDir);
-    const batchPoolSignal: ClassificationSignal | null = batchPoolScores.length > 0
-      ? { source: "Pool", folder: batchPoolScores[0].folder, confidence: batchPoolScores[0].confidence }
-      : null;
-
-    const v2Prompt = buildClassificationPromptV2(activeFolders, fileContent, filename, targetDir, globalDomain);
-
-    try {
-      const raw = await callOllama("", v2Prompt, { numCtx: 4096 });
-      const v2parsed = parseClassificationResponseV2(raw, activeFolders);
-
-      // FIX 4: confidence 0 → Needs Review
-      if (v2parsed && v2parsed.confidence === 0) {
-        const noSig: ClassificationResult = {
-          category: "Needs Review", confidence: 0,
-          reasoning: `Ollama v2: no signal — ${v2parsed.reason}`,
-          isNewFolder: false, detected_concepts: v2parsed.terms, concept_abstraction: "",
-          requires_review: true, was_noise_penalized: false,
-          global_domain: globalDomain?.domain || "", global_subdomain: globalDomain?.subdomain || "",
-          suggested_path: "", match_level: "fallback",
-        };
-        results.push(noSig); logResult(filename, fileContent, noSig); continue;
-      }
-
-      let result: ClassificationResult;
-      if (v2parsed && v2parsed.folder) {
-        if (v2parsed.terms.length > 0 && !isNoiseFolderName(v2parsed.folder)) {
-          try { addTermsToPool(v2parsed.terms, v2parsed.folder, targetDir); } catch {}
-        }
-        const resolvedFolder =
-          activeFolders.find((f) => f.toLowerCase() === v2parsed.folder.toLowerCase()) ||
-          activeFolders.find((f) => f.toLowerCase().includes(v2parsed.folder.toLowerCase()) || v2parsed.folder.toLowerCase().includes(f.toLowerCase())) ||
-          null;
-        result = {
-          category: resolvedFolder || v2parsed.folder,
-          confidence: v2parsed.confidence,
-          reasoning: `AI v2 CoT: ${v2parsed.reason} [Terms: ${v2parsed.terms.join(", ")}]`,
-          isNewFolder: !resolvedFolder,
-          detected_concepts: v2parsed.terms,
-          concept_abstraction: v2parsed.reason,
-          requires_review: v2parsed.confidence < REVIEW_THRESHOLD,
-          was_noise_penalized: false,
-          global_domain: globalDomain?.domain || "", global_subdomain: globalDomain?.subdomain || "",
-          suggested_path: "", match_level: "specific",
-        };
-      } else {
-        const sp = buildSystemPrompt(folderContext, globalDomain, activeFolders, filename, extension);
-        const um = buildUserMessage(filename, extension, fileContent);
-        const raw2 = await callOllama(sp, um);
-        result = parseResponse(raw2, activeFolders, globalDomain, rawFingerprints);
-      }
-
-      // FIX 3: sibling boost
-      if (batchSiblingSignal && result.category.toLowerCase() === batchSiblingSignal.folder.toLowerCase()) {
-        result.confidence = Math.min(100, result.confidence + batchSiblingSignal.boost);
-        result.reasoning += ` [Sibling +${batchSiblingSignal.boost}: ${batchSiblingSignal.count} files in "${batchSiblingSignal.folder}"]`;
-      }
-
-      // FIX 5: consensus
-      const batchSignals: ClassificationSignal[] = [
-        { source: "Ollama", folder: result.category, confidence: result.confidence },
-      ];
-      if (batchPoolSignal && batchPoolSignal.confidence >= 60) batchSignals.push(batchPoolSignal);
-      if (batchSiblingSignal) batchSignals.push({ source: "Sibling", folder: batchSiblingSignal.folder, confidence: 75 });
-
-      const batchConsensus = applyMultiSignalConsensus(batchSignals, result, filename);
-      batchConsensus.match_level = "specific";
-
-      if (batchConsensus.confidence >= REVIEW_THRESHOLD) {
-        results.push(batchConsensus); logResult(filename, fileContent, batchConsensus); continue;
-      }
-
-      // Step 3: Broad Fallback
-      if (globalDomain && globalDomain.confidence >= DOMAIN_CONFIDENCE_THRESHOLD) {
-        const sugPath = buildSuggestedPath(globalDomain, activeFolders, globalDomain.subdomain);
-        const leaf = sugPath.includes("/")
-          ? sanitizeFolderName(sugPath.split("/").pop()!)
-          : sanitizeFolderName(globalDomain.subdomain || globalDomain.domain);
-        const broad: ClassificationResult = {
-          ...batchConsensus, category: leaf || batchConsensus.category,
-          confidence: Math.max(batchConsensus.confidence, 50),
-          reasoning: batchConsensus.reasoning + ` [Broad fallback via domain ${globalDomain.domain}/${globalDomain.subdomain}]`,
-          isNewFolder: true, suggested_path: sugPath, match_level: "broad",
-        };
-        results.push(broad); logResult(filename, fileContent, broad); continue;
-      }
-
-      // Needs Review
-      const needsReview: ClassificationResult = {
-        category: "Needs Review", confidence: 0,
-        reasoning: batchConsensus.reasoning + " [Routed to Needs Review]",
-        isNewFolder: false,
-        detected_concepts: batchConsensus.detected_concepts,
-        concept_abstraction: batchConsensus.concept_abstraction,
-        requires_review: true, was_noise_penalized: batchConsensus.was_noise_penalized,
-        global_domain: globalDomain?.domain || "", global_subdomain: globalDomain?.subdomain || "",
-        suggested_path: "", match_level: "fallback",
-      };
-      results.push(needsReview); logResult(filename, fileContent, needsReview);
-    } catch (err) {
-      console.error(`[ClassificationService] Failed for ${filename}: ${err}`);
-      // Extension-based fallback before Needs Review
-      const extFallbackMap: Record<string, string> = {
-        ".pdf": "Documents", ".doc": "Documents", ".docx": "Documents", ".txt": "Documents",
-        ".jpg": "Images", ".jpeg": "Images", ".png": "Images", ".heic": "Images", ".gif": "Images",
-        ".mp4": "Videos", ".mov": "Videos", ".avi": "Videos",
-        ".mp3": "Audio", ".wav": "Audio", ".flac": "Audio",
-        ".xls": "Spreadsheets", ".xlsx": "Spreadsheets", ".csv": "Spreadsheets",
-        ".zip": "Archives", ".rar": "Archives", ".7z": "Archives",
-      };
-      const extGuess = extFallbackMap[extension];
-      const extFolder = extGuess && activeFolders.find((f) => f.toLowerCase() === extGuess.toLowerCase());
-      if (extFolder) {
-        results.push({
-          category: extFolder,
-          confidence: 45,
-          reasoning: `AI unavailable: ${err} [Extension fallback → "${extFolder}"]`,
-          isNewFolder: false,
-          detected_concepts: [],
-          concept_abstraction: "",
-          requires_review: true,
-          was_noise_penalized: false,
-          global_domain: globalDomain?.domain || "",
-          global_subdomain: globalDomain?.subdomain || "",
-          suggested_path: "",
-          match_level: "fallback",
-        });
-      } else {
-        results.push({
-          category: "Needs Review",
-          confidence: 0,
-          reasoning: `AI unavailable: ${err}`,
-          isNewFolder: false,
-          detected_concepts: [],
-          concept_abstraction: "",
-          requires_review: true,
-          was_noise_penalized: false,
-          global_domain: globalDomain?.domain || "",
-          global_subdomain: globalDomain?.subdomain || "",
-          suggested_path: "",
-          match_level: "fallback",
-        });
-      }
-    }
+    results.push(await runClassificationWaterfall(filePath, ctx));
   }
-
   return results;
 }
+
 
 // ── Logging helper ────────────────────────────────────────
 

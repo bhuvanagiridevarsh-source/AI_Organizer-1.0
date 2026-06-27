@@ -37,6 +37,7 @@ var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_CloudConnectorService = require("./CloudConnectorService");
 const fsp = import_fs.default.promises;
+const { hashFile } = require("./hashUtil");
 let _syncLog = [];
 const MAX_SYNC_LOG = 500;
 async function syncFileToCloud(localDestPath, category) {
@@ -50,6 +51,7 @@ async function syncFileToCloud(localDestPath, category) {
       await fsp.mkdir(cloudCategoryDir, { recursive: true });
       const cloudDest = import_path.default.join(cloudCategoryDir, filename);
       const finalDest = await resolveUniqueCloudPath(cloudDest);
+      const srcHash = await hashFile(localDestPath);
       await fsp.copyFile(localDestPath, finalDest);
       const [srcStat, dstStat] = await Promise.all([
         fsp.stat(localDestPath),
@@ -60,6 +62,14 @@ async function syncFileToCloud(localDestPath, category) {
         });
         throw new Error(
           `Size mismatch: expected ${srcStat.size} bytes, got ${dstStat.size}`
+        );
+      }
+      const dstHash = await hashFile(finalDest);
+      if (dstHash !== srcHash) {
+        await fsp.unlink(finalDest).catch(() => {
+        });
+        throw new Error(
+          `Hash mismatch: src=${srcHash.slice(0, 12)}\u2026 dst=${dstHash.slice(0, 12)}\u2026`
         );
       }
       const result = {
@@ -116,7 +126,24 @@ async function bulkSyncToCloud(localBaseDir, onProgress) {
           continue;
         }
         const finalDest = await resolveUniqueCloudPath(cloudDest);
+        const srcHash = await hashFile(fileInfo.fullPath);
         await fsp.copyFile(fileInfo.fullPath, finalDest);
+        const dstStat = await fsp.stat(finalDest);
+        if (dstStat.size !== fileInfo.size) {
+          await fsp.unlink(finalDest).catch(() => {
+          });
+          throw new Error(
+            `Size mismatch: expected ${fileInfo.size}, got ${dstStat.size}`
+          );
+        }
+        const dstHash = await hashFile(finalDest);
+        if (dstHash !== srcHash) {
+          await fsp.unlink(finalDest).catch(() => {
+          });
+          throw new Error(
+            `Hash mismatch on bulk copy: ${import_path.default.basename(fileInfo.fullPath)}`
+          );
+        }
         const result = {
           provider: connector.id,
           label: connector.label,

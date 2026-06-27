@@ -24,6 +24,14 @@ import fs from "fs";
 import path from "path";
 import { app } from "electron";
 import { getEmbedding, cosineSimilarity } from "./EmbeddingService";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const DB = require("./DatabaseService") as {
+  init: (dir: string) => boolean;
+  isAvailable: () => boolean;
+  getDb: () => any;
+  ensureTable: (ddl: string) => void;
+  migrateLegacyJson: (p: string, importer: (data: any) => void) => boolean;
+};
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -103,28 +111,163 @@ function getIndexPath(): string {
   return path.join(app.getPath("userData"), INDEX_FILE);
 }
 
+// ── Storage backend ────────────────────────────────────────────────────────
+// SQLite-first with a JSON fallback for environments where better-sqlite3
+// isn't installed yet.  The in-memory `_cache` collapses repeated load/save
+// cycles within a session: previously every indexFile() call parsed and
+// rewrote the entire ~500 MB JSON blob.
+
+let _cache: SearchIndex | null = null;
+let _backendInitialized = false;
+
+function initBackend(): void {
+  if (_backendInitialized) return;
+  _backendInitialized = true;
+  if (DB.init(app.getPath("userData"))) {
+    DB.ensureTable(`
+      CREATE TABLE IF NOT EXISTS search_index (
+        full_path  TEXT PRIMARY KEY,
+        filename   TEXT NOT NULL,
+        folder     TEXT NOT NULL,
+        snippet    TEXT,
+        full_text  TEXT,
+        keywords   TEXT,          -- JSON array
+        timestamp  INTEGER NOT NULL,
+        embedding  TEXT,          -- JSON array (legacy single)
+        embeddings TEXT           -- JSON array of arrays (per-chunk)
+      );
+      CREATE INDEX IF NOT EXISTS idx_search_folder ON search_index(folder);
+      CREATE INDEX IF NOT EXISTS idx_search_filename ON search_index(filename);
+    `);
+    // One-time migration from legacy JSON
+    DB.migrateLegacyJson(getIndexPath(), (data: SearchIndex) => {
+      if (!Array.isArray(data?.entries)) return;
+      const insert = DB.getDb().prepare(`
+        INSERT OR REPLACE INTO search_index
+        (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const tx = DB.getDb().transaction((rows: IndexEntry[]) => {
+        for (const e of rows) {
+          insert.run(
+            e.fullPath, e.filename, e.folder, e.snippet ?? "", e.fullText ?? "",
+            JSON.stringify(e.keywords ?? []), e.timestamp ?? Date.now(),
+            e.embedding ? JSON.stringify(e.embedding) : null,
+            e.embeddings ? JSON.stringify(e.embeddings) : null
+          );
+        }
+      });
+      tx(data.entries);
+    });
+  }
+}
+
+function rowToEntry(r: any): IndexEntry {
+  return {
+    filename: r.filename,
+    folder:   r.folder,
+    fullPath: r.full_path,
+    snippet:  r.snippet ?? "",
+    fullText: r.full_text ?? undefined,
+    keywords: r.keywords ? JSON.parse(r.keywords) : [],
+    timestamp: r.timestamp,
+    embedding: r.embedding ? JSON.parse(r.embedding) : undefined,
+    embeddings: r.embeddings ? JSON.parse(r.embeddings) : undefined,
+  };
+}
+
 function loadIndex(): SearchIndex {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    const rows = DB.getDb().prepare(
+      `SELECT full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings
+         FROM search_index`
+    ).all();
+    return {
+      entries: rows.map(rowToEntry),
+      lastUpdated: Date.now(),
+      fullTextVersion: FULL_TEXT_VERSION,
+    };
+  }
+  // JSON fallback (with in-memory cache)
+  if (_cache) return _cache;
   try {
     const filePath = getIndexPath();
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, "utf-8");
       const data = JSON.parse(raw);
       if (data && Array.isArray(data.entries)) {
-        return data as SearchIndex;
+        _cache = data as SearchIndex;
+        return _cache;
       }
     }
-  } catch {
-    // Corrupted — start fresh
-  }
-  return { entries: [], lastUpdated: Date.now() };
+  } catch { /* corrupt — start fresh */ }
+  _cache = { entries: [], lastUpdated: Date.now() };
+  return _cache;
 }
 
 function saveIndex(index: SearchIndex): void {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    // Replace-all semantics is the cheapest correct port of the old JSON
+    // model; per-entry upsert is used by indexFile() directly via upsertEntry.
+    // (saveIndex is rarely called externally now that we have upsertEntry.)
+    const db = DB.getDb();
+    const tx = db.transaction(() => {
+      db.exec("DELETE FROM search_index");
+      const insert = db.prepare(`
+        INSERT OR REPLACE INTO search_index
+        (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const e of index.entries) {
+        insert.run(
+          e.fullPath, e.filename, e.folder, e.snippet ?? "", e.fullText ?? "",
+          JSON.stringify(e.keywords ?? []), e.timestamp,
+          e.embedding ? JSON.stringify(e.embedding) : null,
+          e.embeddings ? JSON.stringify(e.embeddings) : null
+        );
+      }
+    });
+    tx();
+    return;
+  }
+  // JSON fallback — atomic write via tmp + rename
   try {
-    fs.writeFileSync(getIndexPath(), JSON.stringify(index, null, 2), "utf-8");
+    _cache = index;
+    const filePath = getIndexPath();
+    const tmp = `${filePath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf-8");
+    fs.renameSync(tmp, filePath);
   } catch (err) {
     console.error(`[SearchIndex] Failed to save: ${err}`);
   }
+}
+
+/**
+ * Upsert a single entry — the SQLite path avoids rewriting the entire
+ * index for every file indexed.  Falls back to load+mutate+save when JSON.
+ */
+function upsertEntry(entry: IndexEntry): void {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    DB.getDb().prepare(`
+      INSERT OR REPLACE INTO search_index
+      (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entry.fullPath, entry.filename, entry.folder, entry.snippet ?? "", entry.fullText ?? "",
+      JSON.stringify(entry.keywords ?? []), entry.timestamp,
+      entry.embedding ? JSON.stringify(entry.embedding) : null,
+      entry.embeddings ? JSON.stringify(entry.embeddings) : null
+    );
+    return;
+  }
+  const idx = loadIndex();
+  const existing = idx.entries.findIndex((e) => e.fullPath === entry.fullPath);
+  if (existing !== -1) idx.entries.splice(existing, 1);
+  idx.entries.push(entry);
+  saveIndex(idx);
 }
 
 // ── Keyword Extraction ─────────────────────────────────────────────────────
@@ -176,19 +319,10 @@ export async function indexFile(
   folder: string,
   textContent: string
 ): Promise<void> {
-  const index = loadIndex();
   const filename = path.basename(filePath);
   const fullText = textContent.replace(/\s+/g, " ").trim();
   const snippet = fullText.slice(0, SNIPPET_LENGTH);
   const keywords = extractKeywords(filename, fullText);
-
-  // Remove existing entry for this path (de-duplicate on reclassify)
-  const existing = index.entries.findIndex(
-    (e) => e.fullPath === filePath || e.filename === filename
-  );
-  if (existing !== -1) {
-    index.entries.splice(existing, 1);
-  }
 
   // Generate embeddings — null when Ollama unavailable (graceful degradation)
   let embedding: number[] | undefined;
@@ -210,7 +344,7 @@ export async function indexFile(
     embedding = (await getEmbedding(`${filename} ${folder} ${fullText}`)) ?? undefined;
   }
 
-  index.entries.push({
+  const entry: IndexEntry = {
     filename,
     folder,
     fullPath: filePath,
@@ -220,17 +354,35 @@ export async function indexFile(
     timestamp: Date.now(),
     embedding,
     embeddings,
-  });
+  };
 
-  // Keep within cap, removing oldest entries first
-  if (index.entries.length > MAX_ENTRIES) {
-    index.entries = index.entries
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, MAX_ENTRIES);
+  // SQLite UPSERT — O(log N) instead of rewriting the whole index file.
+  // The PRIMARY KEY on full_path handles the dedup case automatically.
+  upsertEntry(entry);
+
+  // Cap enforcement: on the JSON fallback we still need to trim oldest;
+  // on SQLite we do it lazily here so we don't pay the cost on hot path.
+  if (!DB.isAvailable()) {
+    const idx = loadIndex();
+    if (idx.entries.length > MAX_ENTRIES) {
+      idx.entries = idx.entries
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, MAX_ENTRIES);
+      idx.lastUpdated = Date.now();
+      saveIndex(idx);
+    }
+  } else {
+    // For SQLite, single-statement trim is much cheaper than load-sort-save
+    const db = DB.getDb();
+    const count = db.prepare("SELECT COUNT(*) AS c FROM search_index").get().c;
+    if (count > MAX_ENTRIES) {
+      db.prepare(`
+        DELETE FROM search_index WHERE full_path IN (
+          SELECT full_path FROM search_index ORDER BY timestamp ASC LIMIT ?
+        )
+      `).run(count - MAX_ENTRIES);
+    }
   }
-
-  index.lastUpdated = Date.now();
-  saveIndex(index);
 
   console.log(
     `[SearchIndex] Indexed: "${filename}" → "${folder}"${embedding ? " (+embedding)" : ""}`

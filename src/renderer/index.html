@@ -4319,6 +4319,10 @@ html.show-kanji .footer-kanji { display: block; }
     <button class="post-op-bar-btn" id="postOpDismissBtn">✕</button>
   </div>
 
+  <!-- Extracted modules (load before renderer.js — populate window.SJ namespace) -->
+  <script src="modules/pii.js"></script>
+  <script src="modules/category-evidence.js"></script>
+
   <script src="renderer.js"></script>
 
   <script src="ui-init.js"></script>

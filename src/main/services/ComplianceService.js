@@ -55,6 +55,11 @@ function piiPath() {
 function retentionPath() {
   return import_path.default.join(_workDir, "retention_rules.json");
 }
+function auditArchiveDir() {
+  return import_path.default.join(_workDir, "compliance_audit_archives");
+}
+const MAX_ACTIVE_ENTRIES = 5e3;
+const KEEP_AFTER_ROTATE = 4e3;
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -69,10 +74,48 @@ function loadJSON(filePath, fallback) {
 }
 function saveJSON(filePath, data) {
   try {
-    import_fs.default.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    const tmp = `${filePath}.tmp`;
+    import_fs.default.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+    import_fs.default.renameSync(tmp, filePath);
   } catch (err) {
     console.error("[Compliance] Save failed:", err);
   }
+}
+function archiveAuditEntries(entries) {
+  if (entries.length === 0) return;
+  try {
+    const dir = auditArchiveDir();
+    import_fs.default.mkdirSync(dir, { recursive: true });
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const archivePath = import_path.default.join(dir, `audit-${stamp}.jsonl`);
+    const lines = entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    import_fs.default.appendFileSync(archivePath, lines, "utf-8");
+  } catch (err) {
+    console.error("[Compliance] Archive rotation failed:", err);
+  }
+}
+function readAuditArchives() {
+  const dir = auditArchiveDir();
+  if (!import_fs.default.existsSync(dir)) return [];
+  const all = [];
+  try {
+    const files = import_fs.default.readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort();
+    for (const f of files) {
+      try {
+        const text = import_fs.default.readFileSync(import_path.default.join(dir, f), "utf-8");
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            all.push(JSON.parse(line));
+          } catch {
+          }
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return all;
 }
 function initCompliance(workDir) {
   _workDir = workDir;
@@ -87,12 +130,19 @@ function writeAuditEntry(action, fields) {
   };
   const entries = loadJSON(auditPath(), []);
   entries.push(entry);
-  if (entries.length > 5e3) entries.splice(0, entries.length - 5e3);
+  if (entries.length > MAX_ACTIVE_ENTRIES) {
+    const overflow = entries.length - KEEP_AFTER_ROTATE;
+    const toArchive = entries.splice(0, overflow);
+    archiveAuditEntries(toArchive);
+  }
   saveJSON(auditPath(), entries);
   return entry;
 }
-function readAuditLog() {
-  return loadJSON(auditPath(), []);
+function readAuditLog(opts = {}) {
+  const live = loadJSON(auditPath(), []);
+  if (!opts.includeArchives) return live;
+  const archived = readAuditArchives();
+  return [...archived, ...live];
 }
 function logPIIIncident(filename, fullPath, detectedTypes, action) {
   const incident = {
@@ -177,7 +227,7 @@ function scanRetention() {
   return flags;
 }
 function getComplianceStats() {
-  const entries = readAuditLog();
+  const entries = readAuditLog({ includeArchives: true });
   const incidents = readPIIIncidents();
   const retention = scanRetention();
   const moves = entries.filter((e) => e.action === "MOVED" || e.action === "AUTO_ORGANIZED");
@@ -209,7 +259,7 @@ function buildComplianceReportHTML() {
   const stats = getComplianceStats();
   const incidents = readPIIIncidents();
   const retention = scanRetention();
-  const entries = readAuditLog().slice(-100).reverse();
+  const entries = readAuditLog({ includeArchives: true }).slice(-100).reverse();
   const now = (/* @__PURE__ */ new Date()).toLocaleString();
   const user = import_os.default.userInfo().username;
   const scoreColor = stats.complianceScore >= 80 ? "#34d399" : stats.complianceScore >= 50 ? "#fb923c" : "#f87171";

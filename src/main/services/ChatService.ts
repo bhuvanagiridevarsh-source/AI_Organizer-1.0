@@ -398,24 +398,37 @@ export async function handleChatMessage(
     return;
   }
 
-  // ── Read FULL file content for each match (not just the 800-char snippet) ──
-  const enrichedFiles: { entry: IndexEntry; score: number; matchReason: string; fullContent?: string }[] = [];
+  // ── Read FULL file content for each match — bounded-concurrency parallel ──
+  // Previously this was sequential (one await per file).  For 8 files that's
+  // 8x slower than necessary.  Parallelize with a small concurrency cap so we
+  // don't hammer the filesystem or blow up memory on large PDFs.
   const total = relevantFiles.length;
-  for (let i = 0; i < total; i++) {
-    const r = relevantFiles[i];
-    // Emit progress so the UI can show a loading bar
-    if (!window.isDestroyed()) {
-      window.webContents.send("chat:reading-files", {
-        current: i + 1,
-        total,
-        filename: r.entry.filename,
-      });
+  let completed = 0;
+  const READ_CONCURRENCY = 4;
+
+  const enrichedFiles: { entry: IndexEntry; score: number; matchReason: string; fullContent?: string }[] =
+    new Array(total);
+
+  async function worker(startIdx: number): Promise<void> {
+    for (let i = startIdx; i < total; i += READ_CONCURRENCY) {
+      const r = relevantFiles[i];
+      const fullContent = await readFullFileContent(r.entry);
+      enrichedFiles[i] = { ...r, fullContent };
+      completed++;
+      if (!window.isDestroyed()) {
+        window.webContents.send("chat:reading-files", {
+          current: completed,
+          total,
+          filename: r.entry.filename,
+        });
+      }
+      const wordCount = fullContent.split(/\s+/).length;
+      console.log(`[ChatService] Read full content: "${r.entry.filename}" — ${wordCount} words`);
     }
-    const fullContent = await readFullFileContent(r.entry);
-    enrichedFiles.push({ ...r, fullContent });
-    const wordCount = fullContent.split(/\s+/).length;
-    console.log(`[ChatService] Read full content: "${r.entry.filename}" — ${wordCount} words`);
   }
+
+  const workerCount = Math.min(READ_CONCURRENCY, total);
+  await Promise.all(Array.from({ length: workerCount }, (_, k) => worker(k)));
 
   // Tokenize the query for relevance-guided paragraph extraction
   const queryTokens = message

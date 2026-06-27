@@ -264,22 +264,29 @@ async function handleChatMessage(message, history, window) {
     }
     return;
   }
-  const enrichedFiles = [];
   const total = relevantFiles.length;
-  for (let i = 0; i < total; i++) {
-    const r = relevantFiles[i];
-    if (!window.isDestroyed()) {
-      window.webContents.send("chat:reading-files", {
-        current: i + 1,
-        total,
-        filename: r.entry.filename
-      });
+  let completed = 0;
+  const READ_CONCURRENCY = 4;
+  const enrichedFiles = new Array(total);
+  async function worker(startIdx) {
+    for (let i = startIdx; i < total; i += READ_CONCURRENCY) {
+      const r = relevantFiles[i];
+      const fullContent = await readFullFileContent(r.entry);
+      enrichedFiles[i] = { ...r, fullContent };
+      completed++;
+      if (!window.isDestroyed()) {
+        window.webContents.send("chat:reading-files", {
+          current: completed,
+          total,
+          filename: r.entry.filename
+        });
+      }
+      const wordCount = fullContent.split(/\s+/).length;
+      console.log(`[ChatService] Read full content: "${r.entry.filename}" \u2014 ${wordCount} words`);
     }
-    const fullContent = await readFullFileContent(r.entry);
-    enrichedFiles.push({ ...r, fullContent });
-    const wordCount = fullContent.split(/\s+/).length;
-    console.log(`[ChatService] Read full content: "${r.entry.filename}" \u2014 ${wordCount} words`);
   }
+  const workerCount = Math.min(READ_CONCURRENCY, total);
+  await Promise.all(Array.from({ length: workerCount }, (_, k) => worker(k)));
   const queryTokens = message.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
   const systemPrompt = buildSystemPrompt(enrichedFiles, folderSummary, totalFiles, queryTokens);
   const messages = [

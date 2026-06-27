@@ -87,6 +87,15 @@ let _workDir = "";
 function auditPath()     { return path.join(_workDir, "compliance_audit.json"); }
 function piiPath()       { return path.join(_workDir, "pii_incidents.json"); }
 function retentionPath() { return path.join(_workDir, "retention_rules.json"); }
+function auditArchiveDir() { return path.join(_workDir, "compliance_audit_archives"); }
+
+// ── Audit log rotation policy ─────────────────────────────────────────────
+// Compliance requires that NO entries are dropped.  When the live file passes
+// MAX_ACTIVE_ENTRIES, we move the oldest entries to a dated JSONL archive in
+// `compliance_audit_archives/`, keeping the live file fast to load and write
+// while preserving every record for audits.
+const MAX_ACTIVE_ENTRIES = 5000;
+const KEEP_AFTER_ROTATE  = 4000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -104,8 +113,57 @@ function loadJSON<T>(filePath: string, fallback: T): T {
 }
 
 function saveJSON(filePath: string, data: unknown): void {
-  try { fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8"); }
-  catch (err) { console.error("[Compliance] Save failed:", err); }
+  // Atomic write: tmp → rename.  Prevents partial-write corruption if the
+  // process crashes mid-write (which would otherwise destroy the audit log).
+  try {
+    const tmp = `${filePath}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(tmp, filePath);
+  } catch (err) { console.error("[Compliance] Save failed:", err); }
+}
+
+/**
+ * Append a batch of entries to a dated JSONL archive file.  JSONL is
+ * append-only — corruption affects at most one line, not the whole file.
+ */
+function archiveAuditEntries(entries: AuditEntry[]): void {
+  if (entries.length === 0) return;
+  try {
+    const dir = auditArchiveDir();
+    fs.mkdirSync(dir, { recursive: true });
+    // One archive file per day so the audit trail is easy to navigate
+    const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const archivePath = path.join(dir, `audit-${stamp}.jsonl`);
+    const lines = entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    fs.appendFileSync(archivePath, lines, "utf-8");
+  } catch (err) {
+    console.error("[Compliance] Archive rotation failed:", err);
+  }
+}
+
+/**
+ * Read every entry from every archive file.  Used when a full historical
+ * report is requested.  Bounded by archive directory size — for very large
+ * histories the caller should paginate.
+ */
+function readAuditArchives(): AuditEntry[] {
+  const dir = auditArchiveDir();
+  if (!fs.existsSync(dir)) return [];
+  const all: AuditEntry[] = [];
+  try {
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort();
+    for (const f of files) {
+      try {
+        const text = fs.readFileSync(path.join(dir, f), "utf-8");
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          try { all.push(JSON.parse(line) as AuditEntry); }
+          catch { /* skip corrupt line, JSONL design isolates damage */ }
+        }
+      } catch { /* skip unreadable archive */ }
+    }
+  } catch { /* dir read failed */ }
+  return all;
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -129,14 +187,30 @@ export function writeAuditEntry(
   };
   const entries = loadJSON<AuditEntry[]>(auditPath(), []);
   entries.push(entry);
-  // Keep last 5000 entries
-  if (entries.length > 5000) entries.splice(0, entries.length - 5000);
+  // Rotate (don't truncate): when over MAX_ACTIVE_ENTRIES, move the oldest
+  // overflow into a dated archive instead of dropping them.  This preserves
+  // the full compliance trail forever — required for audits.
+  if (entries.length > MAX_ACTIVE_ENTRIES) {
+    const overflow = entries.length - KEEP_AFTER_ROTATE;
+    const toArchive = entries.splice(0, overflow);
+    archiveAuditEntries(toArchive);
+  }
   saveJSON(auditPath(), entries);
   return entry;
 }
 
-export function readAuditLog(): AuditEntry[] {
-  return loadJSON<AuditEntry[]>(auditPath(), []);
+/**
+ * Read the live audit log.  By default returns only the active rolling
+ * window (~last 4–5k entries).  Pass `{ includeArchives: true }` to merge
+ * in every archived entry from `compliance_audit_archives/` for a full
+ * historical view — used by the PDF report and audit-export flows.
+ */
+export function readAuditLog(opts: { includeArchives?: boolean } = {}): AuditEntry[] {
+  const live = loadJSON<AuditEntry[]>(auditPath(), []);
+  if (!opts.includeArchives) return live;
+  const archived = readAuditArchives();
+  // Archives are oldest-first by filename; live appends are also chronological
+  return [...archived, ...live];
 }
 
 // ── PII Incidents ──────────────────────────────────────────────────────────
@@ -248,7 +322,10 @@ export function scanRetention(): RetentionFlag[] {
 // ── Compliance Stats ───────────────────────────────────────────────────────
 
 export function getComplianceStats(): ComplianceStats {
-  const entries   = readAuditLog();
+  // Include archives so totalMoves/totalAuditEntries reflect the FULL
+  // history, not just the rotating live window.  Compliance scoring would
+  // otherwise look better than reality after a rotation.
+  const entries   = readAuditLog({ includeArchives: true });
   const incidents = readPIIIncidents();
   const retention = scanRetention();
 
@@ -292,7 +369,9 @@ export function buildComplianceReportHTML(): string {
   const stats     = getComplianceStats();
   const incidents = readPIIIncidents();
   const retention = scanRetention();
-  const entries   = readAuditLog().slice(-100).reverse();
+  // For the report, pull from full history (live + archives) so old activity
+  // surfaces when an auditor requests a backdated review.
+  const entries   = readAuditLog({ includeArchives: true }).slice(-100).reverse();
   const now       = new Date().toLocaleString();
   const user      = os.userInfo().username;
 

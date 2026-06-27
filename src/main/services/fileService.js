@@ -16,6 +16,7 @@
 const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
+const { hashFile } = require("./hashUtil");
 
 /**
  * Resolve a unique destination path. If `dest` already exists,
@@ -89,20 +90,32 @@ async function safeMoveFile(source, destination) {
     }
   }
 
-  // 6. Cross-filesystem fallback: copy → verify → delete
+  // 6. Cross-filesystem fallback: hash source → copy → verify hash → delete
+  // We must hash the source BEFORE copying in case the source file changes
+  // between copy and verification (concurrent writer).  Once the source hash
+  // is captured, we copy, then hash the destination and compare.  Only after
+  // a byte-exact match do we unlink the source.
+  const srcHash = await hashFile(source);
   await fsp.copyFile(source, finalDest);
 
-  // 7. Verify copy integrity (size match)
   const copyStat = await fsp.stat(finalDest);
   if (copyStat.size !== srcStat.size) {
-    // Copy is corrupt — clean it up, don't delete source
     await fsp.unlink(finalDest).catch(() => {});
     throw new Error(
       `Copy verification failed: expected ${srcStat.size} bytes, got ${copyStat.size}`
     );
   }
 
-  // 8. Only NOW delete the source — copy is verified
+  const dstHash = await hashFile(finalDest);
+  if (dstHash !== srcHash) {
+    // Same size but different content — silent corruption.  Bail out.
+    await fsp.unlink(finalDest).catch(() => {});
+    throw new Error(
+      `Copy hash mismatch: source=${srcHash.slice(0, 12)}… dest=${dstHash.slice(0, 12)}…`
+    );
+  }
+
+  // 7. Only NOW delete the source — copy is byte-exact verified
   await fsp.unlink(source);
 
   return finalDest;

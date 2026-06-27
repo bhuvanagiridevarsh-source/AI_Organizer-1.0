@@ -42,6 +42,7 @@ var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_electron = require("electron");
 var import_EmbeddingService = require("./EmbeddingService");
+const DB = require("./DatabaseService");
 const INDEX_FILE = "search_index.json";
 const MAX_ENTRIES = 2e3;
 const SNIPPET_LENGTH = 300;
@@ -137,26 +138,158 @@ function chunkText(text) {
 function getIndexPath() {
   return import_path.default.join(import_electron.app.getPath("userData"), INDEX_FILE);
 }
+let _cache = null;
+let _backendInitialized = false;
+function initBackend() {
+  if (_backendInitialized) return;
+  _backendInitialized = true;
+  if (DB.init(import_electron.app.getPath("userData"))) {
+    DB.ensureTable(`
+      CREATE TABLE IF NOT EXISTS search_index (
+        full_path  TEXT PRIMARY KEY,
+        filename   TEXT NOT NULL,
+        folder     TEXT NOT NULL,
+        snippet    TEXT,
+        full_text  TEXT,
+        keywords   TEXT,          -- JSON array
+        timestamp  INTEGER NOT NULL,
+        embedding  TEXT,          -- JSON array (legacy single)
+        embeddings TEXT           -- JSON array of arrays (per-chunk)
+      );
+      CREATE INDEX IF NOT EXISTS idx_search_folder ON search_index(folder);
+      CREATE INDEX IF NOT EXISTS idx_search_filename ON search_index(filename);
+    `);
+    DB.migrateLegacyJson(getIndexPath(), (data) => {
+      if (!Array.isArray(data?.entries)) return;
+      const insert = DB.getDb().prepare(`
+        INSERT OR REPLACE INTO search_index
+        (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const tx = DB.getDb().transaction((rows) => {
+        for (const e of rows) {
+          insert.run(
+            e.fullPath,
+            e.filename,
+            e.folder,
+            e.snippet ?? "",
+            e.fullText ?? "",
+            JSON.stringify(e.keywords ?? []),
+            e.timestamp ?? Date.now(),
+            e.embedding ? JSON.stringify(e.embedding) : null,
+            e.embeddings ? JSON.stringify(e.embeddings) : null
+          );
+        }
+      });
+      tx(data.entries);
+    });
+  }
+}
+function rowToEntry(r) {
+  return {
+    filename: r.filename,
+    folder: r.folder,
+    fullPath: r.full_path,
+    snippet: r.snippet ?? "",
+    fullText: r.full_text ?? void 0,
+    keywords: r.keywords ? JSON.parse(r.keywords) : [],
+    timestamp: r.timestamp,
+    embedding: r.embedding ? JSON.parse(r.embedding) : void 0,
+    embeddings: r.embeddings ? JSON.parse(r.embeddings) : void 0
+  };
+}
 function loadIndex() {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    const rows = DB.getDb().prepare(
+      `SELECT full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings
+         FROM search_index`
+    ).all();
+    return {
+      entries: rows.map(rowToEntry),
+      lastUpdated: Date.now(),
+      fullTextVersion: FULL_TEXT_VERSION
+    };
+  }
+  if (_cache) return _cache;
   try {
     const filePath = getIndexPath();
     if (import_fs.default.existsSync(filePath)) {
       const raw = import_fs.default.readFileSync(filePath, "utf-8");
       const data = JSON.parse(raw);
       if (data && Array.isArray(data.entries)) {
-        return data;
+        _cache = data;
+        return _cache;
       }
     }
   } catch {
   }
-  return { entries: [], lastUpdated: Date.now() };
+  _cache = { entries: [], lastUpdated: Date.now() };
+  return _cache;
 }
 function saveIndex(index) {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    const db = DB.getDb();
+    const tx = db.transaction(() => {
+      db.exec("DELETE FROM search_index");
+      const insert = db.prepare(`
+        INSERT OR REPLACE INTO search_index
+        (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const e of index.entries) {
+        insert.run(
+          e.fullPath,
+          e.filename,
+          e.folder,
+          e.snippet ?? "",
+          e.fullText ?? "",
+          JSON.stringify(e.keywords ?? []),
+          e.timestamp,
+          e.embedding ? JSON.stringify(e.embedding) : null,
+          e.embeddings ? JSON.stringify(e.embeddings) : null
+        );
+      }
+    });
+    tx();
+    return;
+  }
   try {
-    import_fs.default.writeFileSync(getIndexPath(), JSON.stringify(index, null, 2), "utf-8");
+    _cache = index;
+    const filePath = getIndexPath();
+    const tmp = `${filePath}.tmp`;
+    import_fs.default.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf-8");
+    import_fs.default.renameSync(tmp, filePath);
   } catch (err) {
     console.error(`[SearchIndex] Failed to save: ${err}`);
   }
+}
+function upsertEntry(entry) {
+  initBackend();
+  if (DB.isAvailable() && DB.getDb()) {
+    DB.getDb().prepare(`
+      INSERT OR REPLACE INTO search_index
+      (full_path, filename, folder, snippet, full_text, keywords, timestamp, embedding, embeddings)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entry.fullPath,
+      entry.filename,
+      entry.folder,
+      entry.snippet ?? "",
+      entry.fullText ?? "",
+      JSON.stringify(entry.keywords ?? []),
+      entry.timestamp,
+      entry.embedding ? JSON.stringify(entry.embedding) : null,
+      entry.embeddings ? JSON.stringify(entry.embeddings) : null
+    );
+    return;
+  }
+  const idx = loadIndex();
+  const existing = idx.entries.findIndex((e) => e.fullPath === entry.fullPath);
+  if (existing !== -1) idx.entries.splice(existing, 1);
+  idx.entries.push(entry);
+  saveIndex(idx);
 }
 function extractKeywords(filename, fullText) {
   const nameTokens = import_path.default.basename(filename, import_path.default.extname(filename)).toLowerCase().split(/[\s\-_.,()[\]]+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t) && !/^\d+$/.test(t));
@@ -169,17 +302,10 @@ function extractKeywords(filename, fullText) {
   return [.../* @__PURE__ */ new Set([...nameTokens, ...topWords])].slice(0, MAX_KEYWORDS);
 }
 async function indexFile(filePath, folder, textContent) {
-  const index = loadIndex();
   const filename = import_path.default.basename(filePath);
   const fullText = textContent.replace(/\s+/g, " ").trim();
   const snippet = fullText.slice(0, SNIPPET_LENGTH);
   const keywords = extractKeywords(filename, fullText);
-  const existing = index.entries.findIndex(
-    (e) => e.fullPath === filePath || e.filename === filename
-  );
-  if (existing !== -1) {
-    index.entries.splice(existing, 1);
-  }
   let embedding;
   let embeddings;
   const wordCount = fullText.split(/\s+/).filter((w) => w.length > 0).length;
@@ -196,7 +322,7 @@ async function indexFile(filePath, folder, textContent) {
   } else {
     embedding = await (0, import_EmbeddingService.getEmbedding)(`${filename} ${folder} ${fullText}`) ?? void 0;
   }
-  index.entries.push({
+  const entry = {
     filename,
     folder,
     fullPath: filePath,
@@ -206,12 +332,26 @@ async function indexFile(filePath, folder, textContent) {
     timestamp: Date.now(),
     embedding,
     embeddings
-  });
-  if (index.entries.length > MAX_ENTRIES) {
-    index.entries = index.entries.sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_ENTRIES);
+  };
+  upsertEntry(entry);
+  if (!DB.isAvailable()) {
+    const idx = loadIndex();
+    if (idx.entries.length > MAX_ENTRIES) {
+      idx.entries = idx.entries.sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_ENTRIES);
+      idx.lastUpdated = Date.now();
+      saveIndex(idx);
+    }
+  } else {
+    const db = DB.getDb();
+    const count = db.prepare("SELECT COUNT(*) AS c FROM search_index").get().c;
+    if (count > MAX_ENTRIES) {
+      db.prepare(`
+        DELETE FROM search_index WHERE full_path IN (
+          SELECT full_path FROM search_index ORDER BY timestamp ASC LIMIT ?
+        )
+      `).run(count - MAX_ENTRIES);
+    }
   }
-  index.lastUpdated = Date.now();
-  saveIndex(index);
   console.log(
     `[SearchIndex] Indexed: "${filename}" \u2192 "${folder}"${embedding ? " (+embedding)" : ""}`
   );

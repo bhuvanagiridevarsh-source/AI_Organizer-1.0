@@ -20,6 +20,8 @@ import path from "path";
 
 const fsp = fs.promises;
 import { getEnabledConnectors, CloudProviderID } from "./CloudConnectorService";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { hashFile } = require("./hashUtil") as { hashFile: (p: string) => Promise<string> };
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -75,20 +77,32 @@ export async function syncFileToCloud(
       const cloudDest = path.join(cloudCategoryDir, filename);
       const finalDest = await resolveUniqueCloudPath(cloudDest);
 
+      // Hash source first so a concurrent writer cannot fool the check
+      const srcHash = await hashFile(localDestPath);
+
       // Copy the file (never move)
       await fsp.copyFile(localDestPath, finalDest);
 
-      // Verify copy integrity
+      // Verify copy integrity — size + SHA-256.  Size catches obvious
+      // truncation cheaply; the hash catches silent bit-for-bit corruption
+      // (network drives, FUSE backends, antivirus scanners that rewrite).
       const [srcStat, dstStat] = await Promise.all([
         fsp.stat(localDestPath),
         fsp.stat(finalDest),
       ]);
 
       if (srcStat.size !== dstStat.size) {
-        // Clean up corrupt copy
         await fsp.unlink(finalDest).catch(() => {});
         throw new Error(
           `Size mismatch: expected ${srcStat.size} bytes, got ${dstStat.size}`
+        );
+      }
+
+      const dstHash = await hashFile(finalDest);
+      if (dstHash !== srcHash) {
+        await fsp.unlink(finalDest).catch(() => {});
+        throw new Error(
+          `Hash mismatch: src=${srcHash.slice(0, 12)}… dst=${dstHash.slice(0, 12)}…`
         );
       }
 
@@ -169,7 +183,25 @@ export async function bulkSyncToCloud(
         }
 
         const finalDest = await resolveUniqueCloudPath(cloudDest);
+        const srcHash = await hashFile(fileInfo.fullPath);
         await fsp.copyFile(fileInfo.fullPath, finalDest);
+
+        // Verify by hash, not just size — bulk sync writes many files at
+        // once and we want any silently corrupted copy to fail loudly.
+        const dstStat = await fsp.stat(finalDest);
+        if (dstStat.size !== fileInfo.size) {
+          await fsp.unlink(finalDest).catch(() => {});
+          throw new Error(
+            `Size mismatch: expected ${fileInfo.size}, got ${dstStat.size}`
+          );
+        }
+        const dstHash = await hashFile(finalDest);
+        if (dstHash !== srcHash) {
+          await fsp.unlink(finalDest).catch(() => {});
+          throw new Error(
+            `Hash mismatch on bulk copy: ${path.basename(fileInfo.fullPath)}`
+          );
+        }
 
         const result: SyncResult = {
           provider: connector.id as CloudProviderID,
