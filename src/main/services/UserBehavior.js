@@ -46,7 +46,7 @@ var import_child_process = require("child_process");
 var import_crypto = __toESM(require("crypto"));
 const TELEMETRY_ENDPOINT = "https://app.posthog.com/capture";
 const POSTHOG_API_KEY = "phc_YOUR_PROJECT_KEY_HERE";
-let telemetryEnabled = true;
+let telemetryEnabled = !POSTHOG_API_KEY.includes("YOUR_PROJECT_KEY");
 const BANNED_PATTERNS = [
   // Absolute paths (unix + windows)
   /\/Users\/[^\s,}]*/gi,

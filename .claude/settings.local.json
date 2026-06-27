@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__get_organization",
+      "mcp__claude_ai_Supabase__get_cost",
+      "mcp__claude_ai_Supabase__confirm_cost",
+      "mcp__claude_ai_Supabase__create_project",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__get_publishable_keys",
+      "mcp__claude_ai_Supabase__get_project_url",
+      "mcp__plugin_vercel_vercel__list_teams",
+      "Bash(npx vercel *)",
+      "Bash(curl -s https://backend-two-mu-53.vercel.app/api/health)",
+      "Bash(curl -s -X POST https://backend-two-mu-53.vercel.app/api/license/validate -H 'Content-Type: application/json' -d '{\"key\":\"test-invalid-key\"}')",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(curl -s -X POST https://backend-two-mu-53.vercel.app/api/license/validate -H 'Content-Type: application/json' -d '{\"key\":\"test-key-delete-me\"}')",
+      "Bash(wait)",
+      "Bash(awk 'NR>=158 && NR<=680' /Users/devarshbhuvanagiri/Desktop/AI_Organizer/src/renderer/index.html)",
+      "Bash(awk 'NR>=11 && NR<=730' /Users/devarshbhuvanagiri/Desktop/AI_Organizer/src/renderer/index.html)"
     ]
   }
 }

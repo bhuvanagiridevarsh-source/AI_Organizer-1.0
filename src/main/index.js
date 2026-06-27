@@ -2679,7 +2679,7 @@ ipcMain.handle("chat:reindex-all", async (_event) => {
 
   try {
     const result = await bulkReindex(
-      DEST_DIR,
+      currentBaseDir,
       (filePath) => extractFullText(filePath),
       (progress) => {
         if (win && !win.isDestroyed()) {

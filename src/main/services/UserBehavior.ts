@@ -20,8 +20,9 @@ import crypto from "crypto";
 const TELEMETRY_ENDPOINT = "https://app.posthog.com/capture";
 const POSTHOG_API_KEY = "phc_YOUR_PROJECT_KEY_HERE"; // replace with your key
 
-// Set false to disable all telemetry (respect user preference)
-let telemetryEnabled = true;
+// Disable telemetry when the PostHog key hasn't been configured — prevents
+// silent no-op HTTP calls to PostHog that waste bandwidth and confuse debugging.
+let telemetryEnabled = !POSTHOG_API_KEY.includes("YOUR_PROJECT_KEY");
 
 // ── Types ──────────────────────────────────────────────────
 

@@ -53,11 +53,14 @@ const https = require("https");
 
 // ── Configuration ──────────────────────────────────────────
 
-const TESTING_MODE = true; // free access until license backend is deployed
+// ── LAUNCH CHECKLIST ─────────────────────────────────────────
+// Step 1: Deploy /backend to Vercel (see DEPLOY.md)
+// Step 2: Paste your Vercel URL on the line below
+// Step 3: Flip TESTING_MODE to false  ← this is the "go live" switch
+// ─────────────────────────────────────────────────────────────
+const TESTING_MODE = true; // ← set false when ready to charge (after Stripe + Resend are wired up)
 
-// After deploying /backend to Vercel, paste your deployment URL here.
-// If this is still a placeholder the app will degrade gracefully instead of crashing.
-const LICENSE_API_URL = "TODO_YOUR_VERCEL_URL/api/license/validate";
+const LICENSE_API_URL = "https://backend-two-mu-53.vercel.app/api/license/validate";
 
 // True when the URL has not been configured yet (prevents a crash on new URL())
 const _API_URL_CONFIGURED = LICENSE_API_URL.startsWith("https://");

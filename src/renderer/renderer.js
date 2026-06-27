@@ -1001,6 +1001,13 @@ async function organizeFiles(onlyApproved) {
       entry.status   = "error";
       entry.errorMsg = String(err.message || err);
       errors++;
+      if (err.message && err.message.includes("License required")) {
+        feedAdd(`License required — open Settings → License to activate your key.`, true);
+        organizeBtn.disabled = false;
+        confirmBtn.disabled  = false;
+        render();
+        return;
+      }
       feedAdd(`FAILED: ${entry.filename} — ${entry.errorMsg}`, true);
     }
     render();
@@ -1613,8 +1620,30 @@ function exitBossDashboard() {
 }
 
 // ── Settings panel ───────────────────────────────────────────
+async function refreshLicenseUI() {
+  const statusEl = $("licenseStatusRow");
+  const deactivateBtn = $("deactivateLicenseBtn");
+  if (!statusEl || !window.api || !window.api.license) return;
+  try {
+    const info = await window.api.license.info();
+    if (info.status === "valid" && info.cached) {
+      statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Licensed</span> &mdash; key: <code style="font-size:var(--text-xs);font-family:var(--font-mono)">${info.key.slice(0, 8)}…</code>`;
+      if (deactivateBtn) deactivateBtn.style.display = "inline-block";
+    } else if (info.status === "invalid") {
+      statusEl.innerHTML = `<span style="color:var(--color-error);">Invalid key.</span> Enter a valid license key below.`;
+      if (deactivateBtn) deactivateBtn.style.display = "none";
+    } else {
+      statusEl.textContent = "No license activated. Enter your key below.";
+      if (deactivateBtn) deactivateBtn.style.display = "none";
+    }
+  } catch {
+    statusEl.textContent = "Could not read license status.";
+  }
+}
+
 async function openSettings() {
   settingsOverlay.classList.remove("hidden");
+  refreshLicenseUI();
   try {
     const c = await window.api.extract.capabilities();
     $("capPdf").textContent     = c.pdfParse ? "Installed" : "Missing";
@@ -1742,6 +1771,44 @@ document.addEventListener("DOMContentLoaded", async () => {
   deselectAllBtn.addEventListener("click", deselectAll);
   settingsBtn.addEventListener("click", openSettings);
   closeSettingsBtn.addEventListener("click", () => settingsOverlay.classList.add("hidden"));
+
+  // License activation
+  const activateLicenseBtn = $("activateLicenseBtn");
+  const deactivateLicenseBtn = $("deactivateLicenseBtn");
+  const licenseKeyInput = $("licenseKeyInput");
+  if (activateLicenseBtn && licenseKeyInput) {
+    activateLicenseBtn.addEventListener("click", async () => {
+      const key = licenseKeyInput.value.trim();
+      const statusEl = $("licenseActivateStatus");
+      if (!key) { if (statusEl) { statusEl.textContent = "Please enter a license key."; statusEl.style.color = "var(--color-error)"; } return; }
+      activateLicenseBtn.disabled = true;
+      activateLicenseBtn.textContent = "Checking…";
+      if (statusEl) { statusEl.textContent = ""; }
+      try {
+        const result = await window.api.license.validate(key);
+        if (result.valid) {
+          licenseKeyInput.value = "";
+          if (statusEl) { statusEl.textContent = "License activated!"; statusEl.style.color = "var(--color-success)"; }
+          refreshLicenseUI();
+        } else {
+          if (statusEl) { statusEl.textContent = "Invalid key — check you pasted it correctly."; statusEl.style.color = "var(--color-error)"; }
+        }
+      } catch (err) {
+        if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.style.color = "var(--color-error)"; }
+      } finally {
+        activateLicenseBtn.disabled = false;
+        activateLicenseBtn.textContent = "Activate";
+      }
+    });
+  }
+  if (deactivateLicenseBtn) {
+    deactivateLicenseBtn.addEventListener("click", async () => {
+      await window.api.license.clear();
+      const statusEl = $("licenseActivateStatus");
+      if (statusEl) { statusEl.textContent = "License removed."; statusEl.style.color = "var(--ink-3)"; }
+      refreshLicenseUI();
+    });
+  }
 
   // Identity profile controls
   const buildProfileBtn = $("buildProfileBtn");
