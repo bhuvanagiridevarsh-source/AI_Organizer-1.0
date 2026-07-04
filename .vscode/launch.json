@@ -2,13 +2,31 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "AI Organizer (Electron)",
+            "name": "AI Organizer (npm run dev)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "AI Organizer (Electron, macOS)",
             "type": "node",
             "request": "launch",
-            "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+            "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
             "args": ["${workspaceFolder}"],
             "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "outputCapture": "std"
+        },
+        {
+            "name": "AI Organizer (Electron, Windows)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/electron.exe",
+            "args": ["${workspaceFolder}"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "outputCapture": "std"
         }
     ]
 }

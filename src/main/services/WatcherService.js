@@ -32,7 +32,8 @@ __export(WatcherService_exports, {
   initWatcher: () => initWatcher,
   loadConfig: () => loadConfig,
   removeWatchFolder: () => removeWatchFolder,
-  setWatcherEnabled: () => setWatcherEnabled
+  setWatcherEnabled: () => setWatcherEnabled,
+  shutdownWatchers: () => shutdownWatchers
 });
 module.exports = __toCommonJS(WatcherService_exports);
 var import_fs = __toESM(require("fs"));
@@ -43,6 +44,7 @@ const DEBOUNCE_MS = 1800;
 const COUNTDOWN_MS = 5 * 6e4;
 const COUNTDOWN_SECS = 300;
 const MIN_FILE_SIZE = 50;
+const STABLE_CHECK_MS = 1200;
 const SKIP_EXT = /* @__PURE__ */ new Set([
   ".tmp",
   ".crdownload",
@@ -83,19 +85,35 @@ function saveConfig(cfg) {
     console.error("[Watcher] Failed to save config:", err);
   }
 }
+function isInside(child, parent) {
+  if (!parent) return false;
+  const rel = import_path.default.relative(import_path.default.resolve(parent), import_path.default.resolve(child));
+  return rel === "" || !rel.startsWith("..") && !import_path.default.isAbsolute(rel);
+}
 function shouldSkip(filePath) {
   const base = import_path.default.basename(filePath);
   const ext = import_path.default.extname(base).toLowerCase();
   if (base.startsWith(".")) return true;
   if (SKIP_EXT.has(ext)) return true;
-  if (destDir && filePath.startsWith(destDir)) return true;
+  if (isInside(filePath, destDir)) return true;
   try {
-    const stat = import_fs.default.statSync(filePath);
+    const stat = import_fs.default.lstatSync(filePath);
+    if (stat.isSymbolicLink()) return true;
     if (!stat.isFile() || stat.size < MIN_FILE_SIZE) return true;
   } catch {
     return true;
   }
   return false;
+}
+async function isSizeStable(filePath) {
+  try {
+    const a = import_fs.default.statSync(filePath);
+    await new Promise((r) => setTimeout(r, STABLE_CHECK_MS));
+    const b = import_fs.default.statSync(filePath);
+    return a.size === b.size && a.mtimeMs === b.mtimeMs && b.size >= MIN_FILE_SIZE;
+  } catch {
+    return false;
+  }
 }
 function cancelCountdown(filePath) {
   if (countdownTimers.has(filePath)) {
@@ -115,6 +133,12 @@ function startCountdown(filePath) {
       console.log(`[Watcher] File gone after countdown, skipping: ${filename}`);
       return;
     }
+    if (!await isSizeStable(filePath)) {
+      console.log(`[Watcher] File still changing, re-arming: ${filename}`);
+      handleFileEvent(filePath, "change");
+      return;
+    }
+    if (shouldSkip(filePath)) return;
     if (!organizeCallback) return;
     console.log(`[Watcher] Organizing after countdown: ${filename}`);
     try {
@@ -171,6 +195,20 @@ function startWatchingFolder(folder) {
     console.error(`[Watcher] Could not watch ${folder}:`, err);
   }
 }
+function clearTimersUnder(folder) {
+  for (const [filePath, timer] of debounceTimers) {
+    if (isInside(filePath, folder)) {
+      clearTimeout(timer);
+      debounceTimers.delete(filePath);
+    }
+  }
+  for (const [filePath, timer] of countdownTimers) {
+    if (isInside(filePath, folder)) {
+      clearTimeout(timer);
+      countdownTimers.delete(filePath);
+    }
+  }
+}
 function stopWatchingFolder(folder) {
   const watcher = watchers.get(folder);
   if (watcher) {
@@ -181,6 +219,14 @@ function stopWatchingFolder(folder) {
     watchers.delete(folder);
     console.log(`[Watcher] Stopped watching: ${folder}`);
   }
+  clearTimersUnder(folder);
+}
+function shutdownWatchers() {
+  for (const timer of debounceTimers.values()) clearTimeout(timer);
+  for (const timer of countdownTimers.values()) clearTimeout(timer);
+  debounceTimers.clear();
+  countdownTimers.clear();
+  for (const folder of [...watchers.keys()]) stopWatchingFolder(folder);
 }
 function initWatcher(dest, onOrganize, onNotify, onCountdown) {
   destDir = dest;
@@ -234,5 +280,6 @@ function getWatcherStatus() {
   initWatcher,
   loadConfig,
   removeWatchFolder,
-  setWatcherEnabled
+  setWatcherEnabled,
+  shutdownWatchers
 });

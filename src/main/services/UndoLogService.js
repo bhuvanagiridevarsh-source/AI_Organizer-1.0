@@ -39,6 +39,15 @@ var import_path = __toESM(require("path"));
 var import_electron = require("electron");
 const fsp = import_fs.default.promises;
 const DEFAULT_MAX_OPS = 50;
+let _queue = Promise.resolve();
+function withLock(fn) {
+  const run = _queue.then(fn, fn);
+  _queue = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
 function logPath() {
   return import_path.default.join(import_electron.app.getPath("userData"), "undo_log.json");
 }
@@ -55,62 +64,127 @@ async function loadLog() {
   }
 }
 async function saveLog(log) {
-  await fsp.writeFile(logPath(), JSON.stringify(log, null, 2), "utf-8");
+  const finalPath = logPath();
+  const dir = import_path.default.dirname(finalPath);
+  const tmpPath = import_path.default.join(dir, `.undo_log.${process.pid}.${Date.now()}.tmp`);
+  const data = JSON.stringify(log, null, 2);
+  const fh = await fsp.open(tmpPath, "w");
+  try {
+    await fh.writeFile(data, "utf-8");
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  try {
+    await fsp.rename(tmpPath, finalPath);
+  } catch (err) {
+    await fsp.unlink(tmpPath).catch(() => {
+    });
+    throw err;
+  }
+  try {
+    const dh = await fsp.open(dir, "r");
+    try {
+      await dh.sync();
+    } finally {
+      await dh.close();
+    }
+  } catch {
+  }
 }
 async function recordOperation(source, moves, description, prompt) {
   if (moves.length === 0) return "";
-  const log = await loadLog();
-  const id = `undo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const op = {
-    id,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    source,
-    prompt,
-    description,
-    moves,
-    canUndo: true
-  };
-  log.operations.unshift(op);
-  log.operations = log.operations.slice(0, log.maxOperations || DEFAULT_MAX_OPS);
-  await saveLog(log);
-  return id;
+  return withLock(async () => {
+    const log = await loadLog();
+    const id = `undo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const op = {
+      id,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      source,
+      prompt,
+      description,
+      moves,
+      canUndo: true
+    };
+    log.operations.unshift(op);
+    log.operations = log.operations.slice(0, log.maxOperations || DEFAULT_MAX_OPS);
+    await saveLog(log);
+    return id;
+  });
 }
 async function undoOperation(operationId) {
   const { safeMoveFile } = require("./fileService");
-  const log = await loadLog();
-  const op = log.operations.find((o) => o.id === operationId);
-  if (!op) return { restored: 0, skipped: 0, errors: ["Operation not found"] };
-  if (!op.canUndo) return { restored: 0, skipped: 0, errors: ["This operation has already been undone"] };
-  const errors = [];
-  let restored = 0;
-  let skipped = 0;
-  for (const move of [...op.moves].reverse()) {
-    try {
-      await fsp.access(move.toPath);
-      const fromDir = import_path.default.dirname(move.fromPath);
-      await fsp.mkdir(fromDir, { recursive: true });
-      await safeMoveFile(move.toPath, move.fromPath);
-      restored++;
-    } catch (err) {
-      if (err?.code === "ENOENT") {
-        skipped++;
-      } else {
-        errors.push(`${move.fileName}: ${err?.message ?? "error"}`);
+  return withLock(async () => {
+    const log = await loadLog();
+    const op = log.operations.find((o) => o.id === operationId);
+    if (!op) return { restored: 0, skipped: 0, conflicts: 0, errors: ["Operation not found"] };
+    if (!op.canUndo) {
+      return { restored: 0, skipped: 0, conflicts: 0, errors: ["This operation has already been undone"] };
+    }
+    const errors = [];
+    let restored = 0;
+    let skipped = 0;
+    let conflicts = 0;
+    let anyRestored = false;
+    for (const move of [...op.moves].reverse()) {
+      try {
+        await fsp.access(move.toPath);
+        let originalOccupied = false;
+        try {
+          await fsp.access(move.fromPath);
+          originalOccupied = true;
+        } catch {
+        }
+        if (originalOccupied) {
+          const { filesMatch } = require("./hashUtil");
+          let same = false;
+          try {
+            same = await filesMatch(move.toPath, move.fromPath);
+          } catch {
+          }
+          if (same) {
+            skipped++;
+            continue;
+          }
+          conflicts++;
+          errors.push(
+            `${move.fileName}: cannot restore \u2014 a different file already exists at ${move.fromPath}`
+          );
+          continue;
+        }
+        const fromDir = import_path.default.dirname(move.fromPath);
+        await fsp.mkdir(fromDir, { recursive: true });
+        const landed = await safeMoveFile(move.toPath, move.fromPath);
+        if (landed !== move.fromPath) {
+          conflicts++;
+          errors.push(`${move.fileName}: restored to ${landed} (original name was taken)`);
+        } else {
+          restored++;
+        }
+        anyRestored = true;
+      } catch (err) {
+        if (err?.code === "ENOENT") {
+          skipped++;
+        } else {
+          errors.push(`${move.fileName}: ${err?.message ?? "error"}`);
+        }
       }
     }
-  }
-  const createdDirs = new Set(op.moves.map((m) => import_path.default.dirname(m.toPath)));
-  for (const dir of createdDirs) {
-    try {
-      const contents = await fsp.readdir(dir);
-      if (contents.length === 0) await fsp.rmdir(dir);
-    } catch {
+    const createdDirs = new Set(op.moves.map((m) => import_path.default.dirname(m.toPath)));
+    for (const dir of createdDirs) {
+      try {
+        const contents = await fsp.readdir(dir);
+        if (contents.length === 0) await fsp.rmdir(dir);
+      } catch {
+      }
     }
-  }
-  op.canUndo = false;
-  op.undoneAt = (/* @__PURE__ */ new Date()).toISOString();
-  await saveLog(log);
-  return { restored, skipped, errors };
+    if (anyRestored || restored > 0) {
+      op.canUndo = false;
+      op.undoneAt = (/* @__PURE__ */ new Date()).toISOString();
+      await saveLog(log);
+    }
+    return { restored, skipped, conflicts, errors };
+  });
 }
 async function getUndoLog() {
   const log = await loadLog();
@@ -121,7 +195,9 @@ async function getOperation(id) {
   return log.operations.find((o) => o.id === id) ?? null;
 }
 async function clearUndoLog() {
-  await saveLog({ operations: [], maxOperations: DEFAULT_MAX_OPS });
+  return withLock(async () => {
+    await saveLog({ operations: [], maxOperations: DEFAULT_MAX_OPS });
+  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

@@ -297,7 +297,7 @@ const {
 // Folder Watcher (Work Mode auto-organize)
 const {
   initWatcher, addWatchFolder, removeWatchFolder,
-  setWatcherEnabled, getWatcherStatus,
+  setWatcherEnabled, getWatcherStatus, shutdownWatchers,
 } = require("./services/WatcherService");
 
 // Workflow Engine (background file workflows — PDF summary, etc.)
@@ -374,6 +374,35 @@ const {
   getUndoLog,
   clearUndoLog,
 } = require("./services/UndoLogService");
+
+/**
+ * Record a single auto/manual move to the persistent undo log so that EVERY
+ * move — not just prompt-based reorg — can be reversed. Fire-and-forget:
+ * logging must never block or fail a file move, but a move that isn't logged
+ * is a move the user can't undo, so we at least warn.
+ *
+ * @param {"auto-sort"|"manual"|"classification"} source
+ * @param {string} fromPath  original absolute path
+ * @param {string} toPath    actual final absolute path (post dedup suffix)
+ * @param {string} reason    human-readable reason/category
+ */
+async function logMoveForUndo(source, fromPath, toPath, reason) {
+  try {
+    await undoLogRecord(
+      source,
+      [{
+        fileName: path.basename(toPath),
+        fromPath,
+        toPath,
+        movedAt: new Date().toISOString(),
+        reason,
+      }],
+      `Moved ${path.basename(toPath)} → ${reason}`,
+    );
+  } catch (err) {
+    console.warn(`[main] Failed to record undo entry for ${fromPath}: ${err.message}`);
+  }
+}
 
 // Organization Templates
 const {
@@ -671,15 +700,17 @@ app.whenReady().then(async () => {
 
         if (confidence >= AUTO_MOVE_THRESHOLD || !hasRunnerUp) {
           const dest = path.join(DEST_DIR, result.category, filename);
-          await safeMoveFile(filePath, dest);
+          const finalDest = await safeMoveFile(filePath, dest);
+          // Record BEFORE indexing so an undo record exists even if later steps throw.
+          await logMoveForUndo("auto-sort", filePath, finalDest, result.category);
           try {
-            const text = await extractText(filePath);
-            indexFile(dest, result.category, text || "");
+            const text = await extractText(finalDest);
+            indexFile(finalDest, result.category, text || "");
           } catch { /* non-fatal */ }
           return {
             filename,
             sourcePath: filePath,
-            destPath:   dest,
+            destPath:   finalDest,
             category:   result.category,
             confidence,
             disambiguated: false,
@@ -690,11 +721,18 @@ app.whenReady().then(async () => {
         // Silently route to Needs Review — don't interrupt the user.
         if (confidence < DISAMBIG_FLOOR) {
           const dest = path.join(DEST_DIR, "Needs Review", filename);
-          await safeMoveFile(filePath, dest).catch(() => {});
+          let finalDest = null;
+          try {
+            finalDest = await safeMoveFile(filePath, dest);
+          } catch (err) {
+            console.warn(`[main] Needs Review move failed for ${filename}: ${err.message}`);
+            return null; // leave the file where it is rather than losing track of it
+          }
+          await logMoveForUndo("auto-sort", filePath, finalDest, "Needs Review");
           return {
             filename,
             sourcePath: filePath,
-            destPath:   dest,
+            destPath:   finalDest,
             category:   "Needs Review",
             confidence,
             disambiguated: false,
@@ -842,6 +880,8 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  // Cancel pending watcher countdowns so none fire during teardown
+  try { shutdownWatchers(); } catch {}
   // Release model memory
   try { require("./services/LlamaService").dispose(); } catch {}
   terminateOCRWorker().catch(() => {});
@@ -977,6 +1017,36 @@ ipcMain.handle("dialog:open-folder", async () => {
   return result.filePaths[0];
 });
 
+// Known user folders (Downloads / Desktop) with a fast shallow file count.
+// Used by the first-run onboarding folder cards.
+ipcMain.handle("app:known-folders", async () => {
+  function quickStats(dir) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      let files = 0;
+      for (const e of entries) {
+        if (e.name.startsWith(".")) continue;
+        if (e.isFile()) files++;
+      }
+      return { path: dir, exists: true, fileCount: files };
+    } catch {
+      return { path: dir, exists: false, fileCount: 0 };
+    }
+  }
+  return {
+    downloads: quickStats(path.join(os.homedir(), "Downloads")),
+    desktop: quickStats(path.join(os.homedir(), "Desktop")),
+  };
+});
+
+// Open a folder in the system file manager (Finder / Explorer).
+ipcMain.handle("shell:open-path", async (_event, targetPath) => {
+  if (!targetPath || typeof targetPath !== "string") return { error: "No path" };
+  const { shell } = require("electron");
+  const err = await shell.openPath(targetPath);
+  return err ? { error: err } : { ok: true };
+});
+
 ipcMain.handle("file:get-all-files", async (_event, folderPath, recursive = false) => {
   const results = [];
   const SKIP_DIRS = new Set([".git", "node_modules", ".DS_Store", "__pycache__"]);
@@ -1024,6 +1094,7 @@ ipcMain.handle("file:move", async (_event, source, destination) => {
     throw new Error("License required to organize files");
   }
   const finalPath = await safeMoveFile(source, destination);
+  await logMoveForUndo("manual", source, finalPath, path.basename(path.dirname(finalPath)));
 
   // ── Cloud Sync: fire-and-forget copy to enabled cloud connectors ──
   // Extract the category from the destination path (parent folder name)
@@ -1908,12 +1979,13 @@ ipcMain.handle("watcher:disambiguation-choice", async (_event, payload) => {
 
     // ── Move the file ───────────────────────────────────────────────────
     const dest = path.join(currentBaseDir, chosenCategory, filename);
-    await safeMoveFile(filePath, dest);
+    const finalDest = await safeMoveFile(filePath, dest);
+    await logMoveForUndo("classification", filePath, finalDest, chosenCategory);
 
     // ── Index for chat search ───────────────────────────────────────────
     try {
-      const text = await extractText(filePath);
-      indexFile(dest, chosenCategory, text || "");
+      const text = await extractText(finalDest);
+      indexFile(finalDest, chosenCategory, text || "");
     } catch { /* non-fatal */ }
 
     // ── Record correction in learning memory ────────────────────────────
@@ -1973,14 +2045,14 @@ ipcMain.handle("watcher:disambiguation-choice", async (_event, payload) => {
       win.webContents.send("watcher:file-organized", {
         filename,
         sourcePath: filePath,
-        destPath: dest,
+        destPath: finalDest,
         category: chosenCategory,
         confidence: 100,   // user confirmed = 100% certainty
         disambiguated: true,
       });
     }
 
-    return { success: true, destPath: dest };
+    return { success: true, destPath: finalDest };
   } catch (err) {
     console.error("[main] watcher:disambiguation-choice error:", err);
     return { success: false, error: String(err) };

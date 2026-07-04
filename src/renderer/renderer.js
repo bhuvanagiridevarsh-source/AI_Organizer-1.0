@@ -3116,16 +3116,9 @@ async function openLanConfigModal() {
     try { localStorage.setItem(ONBOARDING_KEY, "true"); } catch {}
   }
 
-  // Show onboarding on first run
-  function checkFirstRun() {
-    try {
-      if (!localStorage.getItem(ONBOARDING_KEY)) {
-        showOnboarding();
-      }
-    } catch {
-      // localStorage unavailable — skip
-    }
-  }
+  // NOTE: This tour no longer auto-shows on first run — the firstRunOverlay
+  // flow (pick folder → pick plan → preview → done) is the only onboarding.
+  // The tour remains available from the Help menu via window._showOnboarding.
 
   function showOnboarding() {
     currentStep = 0;
@@ -3135,9 +3128,6 @@ async function openLanConfigModal() {
 
   // Expose globally so Help menu can trigger it
   window._showOnboarding = showOnboarding;
-
-  // Check on load (delayed to let main bootstrap finish)
-  setTimeout(checkFirstRun, 800);
 })();
 
 // ═══════════════════════════════════════════════════════════════
@@ -4021,61 +4011,72 @@ async function openLanConfigModal() {
 //  MODEL DOWNLOAD (first launch, model not yet cached)
 // ═══════════════════════════════════════════════════════════════
 (function modelDownloadModule() {
+  // Readiness flag other modules gate on. Default true — only flips false
+  // when the main process says a download is actually needed.
+  window._modelReady = true;
+  window._modelDlPct = 0;
+
   if (!window.api || !window.api.model || !window.api.on) return;
 
-  const overlay   = document.getElementById("modelDownloadOverlay");
+  const pill      = document.getElementById("modelDownloadOverlay");
   const nameEl    = document.getElementById("modelDlName");
   const bar       = document.getElementById("modelDlBar");
   const pctEl     = document.getElementById("modelDlPct");
   const statusEl  = document.getElementById("modelDlStatus");
   const retryBtn  = document.getElementById("modelDlRetryBtn");
-  if (!overlay) return;
+  if (!pill) return;
 
   let currentModel = null;
 
-  const TIER_LABELS = {
-    high:   "3B model — best quality (requires ~4 GB RAM)",
-    medium: "1B model — good quality, lighter",
-    low:    "Quantized model — ultra-light (low RAM)",
-  };
-
-  function showOverlay(model, tier) {
-    currentModel = model;
-    if (nameEl) nameEl.textContent = `${model}  ·  ${TIER_LABELS[tier] || tier}`;
-    setProgress(0, "Connecting to Ollama...");
+  function showPill() {
+    if (nameEl) nameEl.textContent = "Downloading your private AI";
+    setProgress(0, "One-time setup. After this, everything works offline.");
     if (retryBtn) retryBtn.classList.add("hidden");
-    overlay.classList.remove("hidden");
+    pill.classList.remove("hidden");
   }
 
-  function hideOverlay() {
-    overlay.classList.add("hidden");
+  function hidePill() {
+    pill.classList.add("hidden");
   }
 
   function setProgress(pct, status) {
+    window._modelDlPct = pct;
     if (bar)      bar.style.width = `${pct}%`;
     if (pctEl)    pctEl.textContent = `${pct}%`;
     if (statusEl) statusEl.textContent = status || "";
   }
 
+  function markReady() {
+    window._modelReady = true;
+    document.dispatchEvent(new CustomEvent("sj:model-ready"));
+  }
+
   function showError(msg) {
-    if (statusEl) statusEl.textContent = `Download failed: ${msg}`;
+    if (nameEl) nameEl.textContent = "Download paused";
+    if (statusEl) statusEl.textContent = "Check your internet connection, then try again. Your files are untouched.";
     if (retryBtn) retryBtn.classList.remove("hidden");
+    if (typeof feedAdd === "function") feedAdd(`Model download failed: ${msg}`);
   }
 
   async function startPull(model) {
     if (retryBtn) retryBtn.classList.add("hidden");
-    setProgress(0, "Starting download...");
+    if (nameEl) nameEl.textContent = "Downloading your private AI";
+    setProgress(0, "One-time setup. After this, everything works offline.");
 
     // Register progress listener
     window.api.on.modelPullProgress(({ pct }) => {
-      setProgress(pct, pct < 100 ? `Downloading... ${pct}%` : "Finalizing...");
+      setProgress(pct, pct < 100
+        ? "One-time setup. After this, everything works offline."
+        : "Almost there…");
     });
 
     window.api.on.modelPullDone(() => {
-      setProgress(100, "Done!");
-      if (typeof showToast === "function") showToast(`AI model ready — ${model}`);
+      setProgress(100, "");
+      if (nameEl) nameEl.textContent = "Your private AI is ready ✓";
+      if (statusEl) statusEl.textContent = "Everything now runs on this Mac — fully offline.";
       if (typeof feedAdd === "function") feedAdd(`AI model downloaded: ${model}`);
-      setTimeout(hideOverlay, 800);
+      markReady();
+      setTimeout(hidePill, 4000);
     });
 
     window.api.on.modelPullError(({ error }) => {
@@ -4090,9 +4091,12 @@ async function openLanConfigModal() {
     }
   }
 
-  // Main trigger: main process sends this after Ollama starts if model isn't cached
-  window.api.on.modelNeedsDownload(({ model, tier }) => {
-    showOverlay(model, tier);
+  // Main trigger: main process sends this after Ollama starts if model isn't cached.
+  // The pill never blocks the UI — the user can pick a folder and a plan while it runs.
+  window.api.on.modelNeedsDownload(({ model }) => {
+    window._modelReady = false;
+    currentModel = model;
+    showPill();
     startPull(model);
   });
 
@@ -5020,13 +5024,17 @@ async function openLanConfigModal() {
     const folderCount = preview.proposedStructure.length;
     const lowConfCount = preview.moves.filter((m) => m.confidence < 0.6).length;
 
-    if (prPreviewSubtitle) prPreviewSubtitle.textContent = `"${preview.prompt}"`;
+    if (prPreviewSubtitle) {
+      // Don't echo giant template prompts back at the user
+      const p = preview.prompt || '';
+      prPreviewSubtitle.textContent = p.length > 110 ? `"${p.slice(0, 110)}…"` : (p ? `"${p}"` : '');
+    }
 
     if (prPreviewSummary) {
       let html = `<strong>${approvedMoves.length}</strong> file${approvedMoves.length === 1 ? '' : 's'} `;
-      html += `will be moved into <strong>${folderCount}</strong> folder${folderCount === 1 ? '' : 's'}`;
-      if (preview.unmoved.length > 0) html += ` &nbsp;•&nbsp; <span style="color:var(--ds-text-dim)">${preview.unmoved.length} unchanged</span>`;
-      if (lowConfCount > 0) html += ` &nbsp;•&nbsp; <span style="color:var(--ds-amber)">🟡 ${lowConfCount} low-confidence (unchecked)</span>`;
+      html += `into <strong>${folderCount}</strong> folder${folderCount === 1 ? '' : 's'}`;
+      if (preview.unmoved.length > 0) html += ` &nbsp;·&nbsp; <span style="color:var(--ds-text-dim)">${preview.unmoved.length} staying where they are</span>`;
+      if (lowConfCount > 0) html += ` &nbsp;·&nbsp; <span style="color:var(--ds-amber)">${lowConfCount} we weren't sure about — left unchecked for you</span>`;
       prPreviewSummary.innerHTML = html;
     }
 
@@ -5072,11 +5080,11 @@ async function openLanConfigModal() {
          </div>`;
       }).join('');
 
-      // Unchanged/unmoved section
+      // Files staying where they are
       if (preview.unmoved && preview.unmoved.length > 0) {
         prFileList.innerHTML += `
           <div style="padding:7px 12px;font-size:11px;color:var(--ds-text-dim);border-top:1px solid var(--ds-border);">
-            Unchanged (${preview.unmoved.length}): ${preview.unmoved.slice(0,5).map((f) => esc(f.name || f.fileName)).join(', ')}${preview.unmoved.length > 5 ? '...' : ''}
+            Staying where they are (${preview.unmoved.length}): ${preview.unmoved.slice(0,5).map((f) => esc(f.name || f.fileName)).join(', ')}${preview.unmoved.length > 5 ? '…' : ''}
           </div>`;
       }
 
@@ -5096,7 +5104,7 @@ async function openLanConfigModal() {
   function refreshApproveCount() {
     if (!prCurrentPreview || !prApproveBtn) return;
     const count = prCurrentPreview.moves.filter((m) => m.approved).length;
-    prApproveBtn.textContent = `Approve & Organize (${count})`;
+    prApproveBtn.textContent = `Move ${count.toLocaleString()} file${count === 1 ? '' : 's'}`;
     prApproveBtn.disabled = count === 0;
   }
 
@@ -5106,7 +5114,20 @@ async function openLanConfigModal() {
     reorgPreviewOverlay.classList.add('hidden');
     if (prSaveTmplRow) prSaveTmplRow.style.display = 'none';
     prCurrentPreview = null;
+    // Lets the first-run flow return to its "pick a style" step
+    document.dispatchEvent(new CustomEvent('reorg:preview-closed'));
   }
+
+  // Entry point for the first-run onboarding: render + show an
+  // externally-built preview in this shared overlay.
+  window._smartReorg = {
+    showPreview(preview) {
+      prCurrentPreview = preview;
+      renderPreview(preview);
+      if (prSaveTmplRow) prSaveTmplRow.style.display = 'none';
+      reorgPreviewOverlay.classList.remove('hidden');
+    },
+  };
 
   if (reorgPreviewOverlay) {
     reorgPreviewOverlay.addEventListener('click', (e) => {
@@ -5175,19 +5196,26 @@ async function openLanConfigModal() {
       }
 
       prApproveBtn.disabled = true;
-      prApproveBtn.textContent = 'Organizing...';
+      prApproveBtn.textContent = 'Moving your files…';
 
       try {
-        const result = await window.api.promptReorg.execute(prCurrentPreview);
+        const executedPreview = prCurrentPreview; // capture before close nulls it
+        const result = await window.api.promptReorg.execute(executedPreview);
         closePreviewOverlay();
+        prApproveBtn.disabled = false;
 
         const successMsg = `✅ Moved ${result.moved} file${result.moved === 1 ? '' : 's'}` +
-          (result.failed?.length > 0 ? ` (${result.failed.length} failed)` : '');
+          (result.failed?.length > 0 ? ` (${result.failed.length} stayed put)` : '');
         showToast(successMsg, 5000);
         feedAdd(successMsg);
 
+        // Tell the first-run flow (and anyone else) the plan was executed
+        document.dispatchEvent(new CustomEvent('reorg:executed', {
+          detail: { result, preview: executedPreview },
+        }));
+
         // Show post-op notification bar
-        showPostOpBar(successMsg, result.undoLogId || result.operationId, prCurrentPreview?.prompt);
+        showPostOpBar(successMsg, result.undoLogId || result.operationId, executedPreview?.prompt);
 
         // Refresh known folders
         if (DEST_DIR) {
@@ -5514,36 +5542,49 @@ if (window.api?.on?.promptReorgExecuted) {
 // ═══════════════════════════════════════════════════════════════
 
 (function firstRunOnboarding() {
-  const overlay         = $('firstRunOverlay');
+  const overlay = $('firstRunOverlay');
   if (!overlay) return;
 
   // Steps
-  const steps = ['frStep1','frStep2','frStep3','frStep4'].map($);
+  const steps = ['frStep1', 'frStep2', 'frStep3', 'frStep4'].map($);
 
   // Step 1 elements
-  const frFolderDisplay   = $('frFolderDisplay');
-  const frChooseFolderBtn = $('frChooseFolderBtn');
-  const frSkipBtn         = $('frSkipBtn');
-  const frNextToStep2Btn  = $('frNextToStep2Btn');
+  const frCardDownloads    = $('frCardDownloads');
+  const frCardDesktop      = $('frCardDesktop');
+  const frCardBrowse       = $('frCardBrowse');
+  const frCardDownloadsSub = $('frCardDownloadsSub');
+  const frCardDesktopSub   = $('frCardDesktopSub');
+  const frCardBrowseSub    = $('frCardBrowseSub');
+  const frSkipBtn          = $('frSkipBtn');
+  const frNextToStep2Btn   = $('frNextToStep2Btn');
 
   // Step 2 elements
+  const frPlanCards     = $('frPlanCards');
+  const frOwnWordsLink  = $('frOwnWordsLink');
   const frPromptArea    = $('frPromptArea');
   const frBackBtn       = $('frBackBtn');
   const frAnalyzeBtn    = $('frAnalyzeBtn');
   const frFileCount     = $('frFileCount');
+  const frStep2Title    = $('frStep2Title');
   const frProgressBar   = $('frProgressBar');
   const frAnalyzingMsg  = $('frAnalyzingMsg');
 
   // Step 4 elements
-  const frStatFiles         = $('frStatFiles');
-  const frStatFolders       = $('frStatFolders');
-  const frViewResultsBtn    = $('frViewResultsBtn');
+  const frStatFiles          = $('frStatFiles');
+  const frStatFolders        = $('frStatFolders');
+  const frDoneTitle          = $('frDoneTitle');
+  const frDoneSub            = $('frDoneSub');
+  const frFailNote           = $('frFailNote');
+  const frViewResultsBtn     = $('frViewResultsBtn');
+  const frUndoAllBtn         = $('frUndoAllBtn');
   const frOrganizeAnotherBtn = $('frOrganizeAnotherBtn');
-  const frSetupAutoBtn      = $('frSetupAutoBtn');
 
-  let frTargetDir   = null;
-  let frManifest    = null;
-  let frLastResult  = null;
+  let frTargetDir    = null;
+  let frFolderLabel  = null;
+  let frActive       = false;   // true while the first-run flow owns the preview overlay
+  let frLastUndoId   = null;
+  let frRunStartedAt = 0;
+  let frWaitingForModel = false;
 
   function showStep(n) {
     steps.forEach((s, i) => {
@@ -5554,13 +5595,18 @@ if (window.api?.on?.promptReorgExecuted) {
   async function checkAndShow() {
     try {
       const done = await window.api.system.hasCompletedOnboarding();
-      if (!done) overlay.classList.remove('hidden');
+      if (!done) {
+        frActive = true;
+        overlay.classList.remove('hidden');
+        loadKnownFolders();
+      }
     } catch {
       // If API not available, don't show
     }
   }
 
   function closeOnboarding() {
+    frActive = false;
     overlay.classList.add('hidden');
     window.api.system.completeOnboarding().catch(() => {});
   }
@@ -5568,150 +5614,269 @@ if (window.api?.on?.promptReorgExecuted) {
   // Show on startup (with slight delay)
   setTimeout(checkAndShow, 800);
 
-  // Step 1: Choose folder
-  if (frChooseFolderBtn) {
-    frChooseFolderBtn.addEventListener('click', async () => {
+  // ── Step 1: folder cards ──────────────────────────────
+  async function loadKnownFolders() {
+    if (!window.api?.system?.knownFolders) return;
+    try {
+      const kf = await window.api.system.knownFolders();
+      if (kf?.downloads?.exists && frCardDownloadsSub) {
+        frCardDownloads.dataset.path = kf.downloads.path;
+        frCardDownloadsSub.textContent = `${kf.downloads.fileCount.toLocaleString()} loose file${kf.downloads.fileCount === 1 ? '' : 's'}`;
+      } else if (frCardDownloads) {
+        frCardDownloads.style.display = 'none';
+      }
+      if (kf?.desktop?.exists && frCardDesktopSub) {
+        frCardDesktop.dataset.path = kf.desktop.path;
+        frCardDesktopSub.textContent = `${kf.desktop.fileCount.toLocaleString()} loose file${kf.desktop.fileCount === 1 ? '' : 's'}`;
+      } else if (frCardDesktop) {
+        frCardDesktop.style.display = 'none';
+      }
+    } catch {
+      // Cards still work via Browse
+    }
+  }
+
+  function selectFolderCard(card, dirPath, label) {
+    [frCardDownloads, frCardDesktop, frCardBrowse].forEach((c) => {
+      if (c) c.classList.toggle('selected', c === card);
+    });
+    frTargetDir = dirPath;
+    frFolderLabel = label;
+    if (frNextToStep2Btn) frNextToStep2Btn.disabled = !dirPath;
+
+    // Accurate (recursive) count for step 2, fetched in the background
+    if (dirPath && window.api?.promptReorg?.scan) {
+      window.api.promptReorg.scan(dirPath).then((manifest) => {
+        if (frTargetDir === dirPath && frFileCount && manifest?.totalCount != null) {
+          frFileCount.textContent = `${label} — ${manifest.totalCount.toLocaleString()} files`;
+        }
+      }).catch(() => {});
+    }
+    if (frFileCount) frFileCount.textContent = label || '';
+    if (frStep2Title && label) frStep2Title.textContent = `How should ${label} look when we're done?`;
+  }
+
+  if (frCardDownloads) {
+    frCardDownloads.addEventListener('click', () => {
+      const p = frCardDownloads.dataset.path;
+      if (p) selectFolderCard(frCardDownloads, p, 'Downloads');
+    });
+  }
+  if (frCardDesktop) {
+    frCardDesktop.addEventListener('click', () => {
+      const p = frCardDesktop.dataset.path;
+      if (p) selectFolderCard(frCardDesktop, p, 'Desktop');
+    });
+  }
+  if (frCardBrowse) {
+    frCardBrowse.addEventListener('click', async () => {
       try {
         const dir = await window.api.dialog.openFolder();
         if (!dir) return;
-        frTargetDir = dir;
-        frFolderDisplay.textContent = dir.split(/[/\\]/).pop() || dir;
-        frFolderDisplay.classList.add('selected');
-        frFolderDisplay.title = dir;
-        frNextToStep2Btn.disabled = false;
-
-        // Pre-scan to get file count
-        try {
-          frManifest = await window.api.promptReorg.scan(dir);
-          if (frFileCount) frFileCount.textContent = `${dir.split(/[/\\]/).pop()} — ${frManifest.totalCount} files found`;
-        } catch {}
+        const label = dir.split(/[/\\]/).pop() || dir;
+        if (frCardBrowseSub) frCardBrowseSub.textContent = label;
+        selectFolderCard(frCardBrowse, dir, label);
       } catch (e) {
         showToast('Could not pick folder: ' + (e.message || e), 3000);
       }
     });
   }
 
-  if (frSkipBtn) {
-    frSkipBtn.addEventListener('click', closeOnboarding);
-  }
+  if (frSkipBtn) frSkipBtn.addEventListener('click', closeOnboarding);
+  if (frNextToStep2Btn) frNextToStep2Btn.addEventListener('click', () => showStep(1));
 
-  if (frNextToStep2Btn) {
-    frNextToStep2Btn.addEventListener('click', () => showStep(1));
-  }
+  // ── Step 2: plan cards + own words ────────────────────
+  let selectedPlanCard = frPlanCards ? frPlanCards.querySelector('.fr-plan-card.selected') : null;
 
-  // Step 2: Prompt + templates
-  // Wire template chips
-  document.querySelectorAll('.firstrun-tmpl-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      if (frPromptArea) {
-        frPromptArea.value = chip.dataset.prompt;
+  if (frPlanCards) {
+    frPlanCards.querySelectorAll('.fr-plan-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        frPlanCards.querySelectorAll('.fr-plan-card').forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedPlanCard = card;
+        // Choosing a card wins over free text
+        if (frPromptArea) frPromptArea.style.display = 'none';
         updateFrAnalyzeBtn();
+      });
+    });
+  }
+
+  if (frOwnWordsLink) {
+    frOwnWordsLink.addEventListener('click', () => {
+      if (!frPromptArea) return;
+      const visible = frPromptArea.style.display !== 'none';
+      frPromptArea.style.display = visible ? 'none' : 'block';
+      if (!visible) {
+        frPlanCards?.querySelectorAll('.fr-plan-card').forEach((c) => c.classList.remove('selected'));
+        selectedPlanCard = null;
         frPromptArea.focus();
       }
+      updateFrAnalyzeBtn();
     });
-  });
+  }
+
+  function currentPromptText() {
+    const custom = frPromptArea && frPromptArea.style.display !== 'none'
+      ? frPromptArea.value.trim() : '';
+    if (custom) return custom;
+    return selectedPlanCard?.dataset?.prompt || '';
+  }
 
   function updateFrAnalyzeBtn() {
-    if (frAnalyzeBtn) frAnalyzeBtn.disabled = !frPromptArea?.value?.trim();
+    if (!frAnalyzeBtn || frWaitingForModel) return;
+    frAnalyzeBtn.disabled = !currentPromptText();
   }
   if (frPromptArea) frPromptArea.addEventListener('input', updateFrAnalyzeBtn);
 
   if (frBackBtn) frBackBtn.addEventListener('click', () => showStep(0));
 
-  // Listen for pipeline progress
+  // Pipeline progress → step 3 bar
   if (window.api?.on?.promptReorgProgress) {
     window.api.on.promptReorgProgress((data) => {
-      if (frProgressBar && data.pct !== undefined) {
-        frProgressBar.style.width = data.pct + '%';
-      }
-      if (frAnalyzingMsg && data.message) {
-        frAnalyzingMsg.textContent = data.message;
-      }
+      if (!frActive) return;
+      if (frProgressBar && data.pct !== undefined) frProgressBar.style.width = data.pct + '%';
+      if (frAnalyzingMsg && data.message) frAnalyzingMsg.textContent = data.message;
     });
+  }
+
+  // ── Analyze: gate on model readiness, then run the pipeline ──
+  async function runAnalysis() {
+    const promptText = currentPromptText();
+    if (!promptText || !frTargetDir) return;
+
+    showStep(2);
+    if (frProgressBar) frProgressBar.style.width = '5%';
+    if (frAnalyzingMsg) frAnalyzingMsg.textContent = 'Reading your folder. Nothing is moving — you’ll approve every step.';
+
+    try {
+      frRunStartedAt = Date.now();
+      const result = await window.api.promptReorg.runPipeline(promptText, frTargetDir);
+
+      if (result?.error || !result?.preview) {
+        showStep(1);
+        showToast(result?.error || 'Could not build a plan for this folder. Try a different style.', 5000);
+        return;
+      }
+
+      // Hand the preview to the shared Smart Organize preview overlay.
+      overlay.classList.add('hidden');
+      if (window._smartReorg?.showPreview) {
+        window._smartReorg.showPreview(result.preview);
+      }
+    } catch (err) {
+      showStep(1);
+      showToast('Error: ' + (err.message || err), 5000);
+    }
   }
 
   if (frAnalyzeBtn) {
-    frAnalyzeBtn.addEventListener('click', async () => {
-      const promptText = frPromptArea?.value?.trim();
-      if (!promptText || !frTargetDir) return;
+    frAnalyzeBtn.addEventListener('click', () => {
+      if (!currentPromptText() || !frTargetDir) return;
 
-      showStep(2); // Show analyzing step
-      if (frProgressBar) frProgressBar.style.width = '5%';
-      if (frAnalyzingMsg) frAnalyzingMsg.textContent = 'Scanning and building your organization plan...';
+      if (window._modelReady === false) {
+        // One-time setup still downloading — wait for it, keep the user informed
+        frWaitingForModel = true;
+        frAnalyzeBtn.disabled = true;
+        const updateLabel = () => {
+          const pct = window._modelDlPct || 0;
+          frAnalyzeBtn.textContent = `Finishing setup… ${pct}%`;
+        };
+        updateLabel();
+        const tick = setInterval(updateLabel, 1000);
+        if (frReassureEl()) frReassureEl().textContent =
+          'Your private AI is almost ready — it lives on this Mac, so this only happens once.';
+        document.addEventListener('sj:model-ready', () => {
+          clearInterval(tick);
+          frWaitingForModel = false;
+          frAnalyzeBtn.textContent = 'Show me the plan →';
+          frAnalyzeBtn.disabled = false;
+          if (frReassureEl()) frReassureEl().textContent = 'This is just a preview. Nothing moves yet.';
+          runAnalysis();
+        }, { once: true });
+        return;
+      }
 
-      try {
-        const result = await window.api.promptReorg.runPipeline(promptText, frTargetDir);
+      runAnalysis();
+    });
+  }
 
-        if (result?.error || !result?.preview) {
-          showStep(1); // Back to prompt step
-          showToast(result?.error || 'Analysis failed. Try rephrasing.', 5000);
-          return;
-        }
+  function frReassureEl() { return $('frReassure'); }
 
-        // Show the preview overlay (same one used by Smart Organize)
-        const previewOverlay = $('reorgPreviewOverlay');
-        const previewSubtitle = $('prPreviewSubtitle');
-        const fileList = $('prFileList');
-        const treeContainer = $('prTreeContainer');
-        const approveBtn = $('prApproveBtn');
-        const summary = $('prPreviewSummary');
+  // ── After the user approves the plan (shared preview overlay executes it) ──
+  document.addEventListener('reorg:executed', (e) => {
+    if (!frActive) return;
+    const { result, preview } = e.detail || {};
+    if (!result) return;
 
-        // Store the preview for the approve button
-        // We'll patch the approve button to call back here
-        if (previewSubtitle) previewSubtitle.textContent = `"${promptText}"`;
+    frLastUndoId = result.undoLogId || result.operationId || null;
 
-        // Use the enhanced renderer from initEnhancedSmartReorg
-        // by triggering a custom event
-        const previewEvent = new CustomEvent('firstrun:preview-ready', { detail: result.preview });
-        document.dispatchEvent(previewEvent);
+    const moved = result.moved || 0;
+    const folders = preview?.proposedStructure?.length || 0;
+    const secs = frRunStartedAt ? Math.max(1, Math.round((Date.now() - frRunStartedAt) / 1000)) : null;
 
-        overlay.classList.add('hidden');
-        if (previewOverlay) previewOverlay.classList.remove('hidden');
+    if (frStatFiles)   frStatFiles.textContent = moved.toLocaleString();
+    if (frStatFolders) frStatFolders.textContent = folders || '—';
+    if (frDoneTitle)   frDoneTitle.textContent =
+      secs ? `Done. ${moved.toLocaleString()} files organized in ${secs < 90 ? secs + ' seconds' : Math.round(secs / 60) + ' minutes'}.`
+           : `Done. ${moved.toLocaleString()} files organized.`;
+    if (frDoneSub) frDoneSub.textContent = frFolderLabel
+      ? `${frFolderLabel} is tidy. All of it reversible.`
+      : 'All of it reversible.';
 
-        // Patch the approve button to show success step after executing
-        const originalApprove = approveBtn?.onclick;
-        if (approveBtn) {
-          const origClick = approveBtn.getAttribute('data-fr-patched');
-          if (!origClick) {
-            approveBtn.setAttribute('data-fr-patched', '1');
-            approveBtn.addEventListener('click', async function frApproveListener() {
-              // After execution, listen for the result via IPC event
-              const handler = (data) => {
-                frLastResult = data;
-                if (frStatFiles)   frStatFiles.textContent   = data.moved;
-                if (frStatFolders) frStatFolders.textContent = data.failed > 0 ? `${data.moved} moved` : new Set().size || '—';
-                overlay.classList.remove('hidden');
-                showStep(3);
-                approveBtn.removeEventListener('click', frApproveListener);
-              };
-              // One-time listener
-              if (window.api?.on?.promptReorgExecuted) {
-                const origCallback = () => {};
-                window.api.on.promptReorgExecuted((data) => {
-                  if (frStatFiles)   frStatFiles.textContent   = data.moved;
-                  if (frStatFolders) frStatFolders.textContent = data.failed > 0 ? `${data.moved} moved` : '—';
-                  overlay.classList.remove('hidden');
-                  showStep(3);
-                });
-              }
-            }, { once: true });
-          }
-        }
+    const failedCount = Array.isArray(result.failed) ? result.failed.length : (result.failed || 0);
+    if (frFailNote) {
+      if (failedCount > 0) {
+        frFailNote.textContent = `${failedCount} file${failedCount === 1 ? '' : 's'} ${failedCount === 1 ? 'was' : 'were'} in use and stayed put — we’ll never force-move anything.`;
+        frFailNote.style.display = 'block';
+      } else {
+        frFailNote.style.display = 'none';
+      }
+    }
 
-      } catch (err) {
-        showStep(1);
-        showToast('Error: ' + (err.message || err), 5000);
+    if (frUndoAllBtn) {
+      frUndoAllBtn.disabled = !frLastUndoId;
+      frUndoAllBtn.textContent = '↩ Put everything back';
+    }
+
+    overlay.classList.remove('hidden');
+    showStep(3);
+  });
+
+  // If the user closes the preview ("Try a different style"), return to step 2
+  document.addEventListener('reorg:preview-closed', () => {
+    if (!frActive) return;
+    if (overlay.classList.contains('hidden')) {
+      overlay.classList.remove('hidden');
+      showStep(1);
+    }
+  });
+
+  // ── Step 4 buttons ────────────────────────────────────
+  if (frViewResultsBtn) {
+    frViewResultsBtn.addEventListener('click', () => {
+      closeOnboarding();
+      if (frTargetDir && window.api?.system?.openPath) {
+        window.api.system.openPath(frTargetDir).catch(() => {});
       }
     });
   }
 
-  // Step 4 buttons
-  if (frViewResultsBtn) {
-    frViewResultsBtn.addEventListener('click', () => {
-      closeOnboarding();
-      if (frTargetDir) {
-        // Open folder in system file manager via Electron shell
-        try { require('electron').shell?.openPath(frTargetDir); } catch {}
+  if (frUndoAllBtn) {
+    frUndoAllBtn.addEventListener('click', async () => {
+      if (!frLastUndoId) return;
+      frUndoAllBtn.disabled = true;
+      frUndoAllBtn.textContent = 'Putting files back…';
+      try {
+        const r = await window.api.undoLog.undo(frLastUndoId);
+        const restored = r?.restored || 0;
+        if (frDoneTitle) frDoneTitle.textContent = 'Everything is back where it was.';
+        if (frDoneSub) frDoneSub.textContent = `${restored.toLocaleString()} file${restored === 1 ? '' : 's'} restored. Try a different style whenever you like.`;
+        frUndoAllBtn.textContent = '✓ Undone';
+        frLastUndoId = null;
+      } catch (e) {
+        frUndoAllBtn.disabled = false;
+        frUndoAllBtn.textContent = '↩ Put everything back';
+        showToast('Undo failed: ' + (e.message || e), 4000);
       }
     });
   }
@@ -5719,28 +5884,14 @@ if (window.api?.on?.promptReorgExecuted) {
   if (frOrganizeAnotherBtn) {
     frOrganizeAnotherBtn.addEventListener('click', () => {
       frTargetDir = null;
-      frManifest = null;
-      if (frFolderDisplay) { frFolderDisplay.textContent = 'No folder selected'; frFolderDisplay.classList.remove('selected'); }
-      if (frPromptArea) frPromptArea.value = '';
+      frFolderLabel = null;
+      frLastUndoId = null;
+      [frCardDownloads, frCardDesktop, frCardBrowse].forEach((c) => c && c.classList.remove('selected'));
+      if (frPromptArea) { frPromptArea.value = ''; frPromptArea.style.display = 'none'; }
       if (frNextToStep2Btn) frNextToStep2Btn.disabled = true;
+      loadKnownFolders();
       showStep(0);
     });
   }
-
-  if (frSetupAutoBtn) {
-    frSetupAutoBtn.addEventListener('click', () => {
-      closeOnboarding();
-      // Open settings/watcher settings
-      const settingsBtn = $('settingsBtn');
-      if (settingsBtn) settingsBtn.click();
-    });
-  }
-
-  // Allow preview data to be set from pipeline
-  document.addEventListener('firstrun:preview-ready', (e) => {
-    // The enhanced smart reorg module will render it
-    // We just need to expose the preview object
-    window._frPreview = e.detail;
-  });
 
 })();

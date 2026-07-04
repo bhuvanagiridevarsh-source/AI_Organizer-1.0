@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld("api", {
     hasCompletedOnboarding: () => ipcRenderer.invoke("app:has-completed-onboarding"),
     /** Mark the new onboarding as completed. */
     completeOnboarding: () => ipcRenderer.invoke("app:complete-onboarding"),
+    /** Downloads/Desktop paths + shallow file counts for onboarding cards. */
+    knownFolders: () => ipcRenderer.invoke("app:known-folders"),
+    /** Open a folder in Finder/Explorer. */
+    openPath: (p) => ipcRenderer.invoke("shell:open-path", p),
   },
 
   // ── Model download ────────────────────────────────────

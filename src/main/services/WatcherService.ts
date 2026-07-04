@@ -44,6 +44,7 @@ const DEBOUNCE_MS      = 1800;          // Stage 1: write-complete quiet period 
 const COUNTDOWN_MS     = 5 * 60_000;   // Stage 2: 5-minute grace period (ms)
 const COUNTDOWN_SECS   = 300;          // Seconds sent in countdown-started event
 const MIN_FILE_SIZE    = 50;           // Skip empty/partial files (bytes)
+const STABLE_CHECK_MS  = 1200;         // Gap between size samples for stability check
 
 // Extensions to skip outright (system files, temp files, etc.)
 const SKIP_EXT = new Set([
@@ -103,6 +104,18 @@ function saveConfig(cfg: WatcherConfig): void {
 
 // ── File validation ────────────────────────────────────────────────────────
 
+/**
+ * True if `child` is the same path as, or nested inside, `parent`.
+ * Uses path.relative so a sibling like "/x/Organized_backup" is NOT treated
+ * as inside "/x/Organized" (a plain startsWith() check gets this wrong and
+ * would skip legitimate files, or fail to skip destination files).
+ */
+function isInside(child: string, parent: string): boolean {
+  if (!parent) return false;
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 function shouldSkip(filePath: string): boolean {
   const base = path.basename(filePath);
   const ext  = path.extname(base).toLowerCase();
@@ -111,18 +124,36 @@ function shouldSkip(filePath: string): boolean {
   if (base.startsWith(".")) return true;
   if (SKIP_EXT.has(ext))   return true;
 
-  // Skip files already inside the destination tree
-  if (destDir && filePath.startsWith(destDir)) return true;
+  // Skip files already inside the destination tree (boundary-aware)
+  if (isInside(filePath, destDir)) return true;
 
-  // Must exist and be a real file
+  // Must exist and be a real file (do NOT follow symlinks — we won't
+  // auto-organize a symlink, whose target could be anywhere on disk)
   try {
-    const stat = fs.statSync(filePath);
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink()) return true;
     if (!stat.isFile() || stat.size < MIN_FILE_SIZE) return true;
   } catch {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Confirm a file is fully written by sampling its size + mtime twice with a
+ * short gap. A slow download or cloud-sync placeholder that pauses >DEBOUNCE_MS
+ * then resumes would otherwise be grabbed mid-write and moved corrupted.
+ */
+async function isSizeStable(filePath: string): Promise<boolean> {
+  try {
+    const a = fs.statSync(filePath);
+    await new Promise((r) => setTimeout(r, STABLE_CHECK_MS));
+    const b = fs.statSync(filePath);
+    return a.size === b.size && a.mtimeMs === b.mtimeMs && b.size >= MIN_FILE_SIZE;
+  } catch {
+    return false;
+  }
 }
 
 // ── Core watch logic ────────────────────────────────────────────────────────
@@ -161,6 +192,14 @@ function startCountdown(filePath: string): void {
       console.log(`[Watcher] File gone after countdown, skipping: ${filename}`);
       return;
     }
+    // Final safety gate: never touch a file that is still being written.
+    if (!(await isSizeStable(filePath))) {
+      console.log(`[Watcher] File still changing, re-arming: ${filename}`);
+      handleFileEvent(filePath, "change"); // restart the debounce→countdown cycle
+      return;
+    }
+    // The file could have vanished during the stability wait — re-check.
+    if (shouldSkip(filePath)) return;
     if (!organizeCallback) return;
 
     console.log(`[Watcher] Organizing after countdown: ${filename}`);
@@ -247,6 +286,26 @@ function startWatchingFolder(folder: string): void {
   }
 }
 
+/**
+ * Clear any pending debounce/countdown timers for files under `folder`.
+ * Without this, a disabled or removed folder can still fire a countdown
+ * minutes later and organize a file the user thought was no longer watched.
+ */
+function clearTimersUnder(folder: string): void {
+  for (const [filePath, timer] of debounceTimers) {
+    if (isInside(filePath, folder)) {
+      clearTimeout(timer);
+      debounceTimers.delete(filePath);
+    }
+  }
+  for (const [filePath, timer] of countdownTimers) {
+    if (isInside(filePath, folder)) {
+      clearTimeout(timer);
+      countdownTimers.delete(filePath);
+    }
+  }
+}
+
 function stopWatchingFolder(folder: string): void {
   const watcher = watchers.get(folder);
   if (watcher) {
@@ -254,6 +313,20 @@ function stopWatchingFolder(folder: string): void {
     watchers.delete(folder);
     console.log(`[Watcher] Stopped watching: ${folder}`);
   }
+  // Cancel in-flight work for this folder so nothing fires after it's stopped.
+  clearTimersUnder(folder);
+}
+
+/**
+ * Cancel every pending timer and close every watcher. Call on app quit so a
+ * countdown can't fire against a half-torn-down process.
+ */
+export function shutdownWatchers(): void {
+  for (const timer of debounceTimers.values()) clearTimeout(timer);
+  for (const timer of countdownTimers.values()) clearTimeout(timer);
+  debounceTimers.clear();
+  countdownTimers.clear();
+  for (const folder of [...watchers.keys()]) stopWatchingFolder(folder);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────

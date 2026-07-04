@@ -1331,29 +1331,24 @@ html.show-kanji .footer-kanji { display: block; }
     .ram-banner-close:hover { color: #fbbf24; }
 
     /* ── Model Download Overlay ──────────────────── */
-    .model-dl-overlay {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(2, 6, 23, 0.97);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      display: flex; align-items: center; justify-content: center;
+    /* ── One-time AI setup pill (non-blocking, bottom-right) ── */
+    .model-dl-pill {
+      position: fixed; right: 18px; bottom: 18px; z-index: 9999;
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(81,242,251,0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      width: 280px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      font-size: 11px; color: rgba(255,255,255,0.75);
     }
-    .model-dl-overlay.hidden { display: none; }
-    .model-dl-card {
-      background: rgba(15, 23, 42, 0.88);
-      border: 1px solid rgba(255,255,255,0.10);
-      border-radius: 20px;
-      padding: 48px 52px;
-      text-align: center;
-      width: 480px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
-    }
-    .model-dl-icon { font-size: 52px; margin-bottom: 20px; }
-    .model-dl-title { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 10px; }
-    .model-dl-sub { color: rgba(255,255,255,0.55); font-size: 13px; line-height: 1.6; margin-bottom: 32px; }
+    .model-dl-pill.hidden { display: none; }
+    .model-dl-pill-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .model-dl-pill-title { font-weight: 600; color: #fff; font-size: 11.5px; flex: 1; }
+    .model-dl-pct { font-weight: 700; color: #51f2fb; font-size: 11.5px; }
     .model-dl-progress-wrap {
       background: rgba(255,255,255,0.08);
-      border-radius: 99px; height: 8px; overflow: hidden; margin-bottom: 14px;
+      border-radius: 99px; height: 5px; overflow: hidden; margin-bottom: 6px;
     }
     .model-dl-progress-bar {
       height: 100%;
@@ -1361,12 +1356,12 @@ html.show-kanji .footer-kanji { display: block; }
       border-radius: 99px;
       transition: width 0.4s ease;
     }
-    .model-dl-pct { font-size: 32px; font-weight: 700; color: #51f2fb; margin-bottom: 6px; }
-    .model-dl-status { color: rgba(255,255,255,0.45); font-size: 13px; margin-bottom: 28px; min-height: 18px; }
+    .model-dl-status { color: rgba(255,255,255,0.45); font-size: 10.5px; min-height: 14px; line-height: 1.4; }
     .model-dl-retry {
+      margin-top: 6px;
       background: rgba(248,113,113,0.15); border: 1px solid #f87171;
-      color: #f87171; padding: 10px 28px; border-radius: 8px;
-      cursor: pointer; font-size: 14px; font-weight: 600;
+      color: #f87171; padding: 5px 14px; border-radius: 7px;
+      cursor: pointer; font-size: 11px; font-weight: 600;
       transition: background 0.2s;
     }
     .model-dl-retry:hover { background: rgba(248,113,113,0.30); }
@@ -3252,7 +3247,62 @@ html.show-kanji .footer-kanji { display: block; }
       color: rgba(255,255,255,0.3);
       margin-top: 12px;
     }
-  
+
+    /* ── First-run: folder cards (step 1) ─────────────── */
+    .fr-folder-cards { display: flex; gap: 10px; margin: 18px 0 14px; }
+    .fr-folder-card {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 16px 10px 12px;
+      cursor: pointer;
+      color: var(--ds-text, #eaeaea);
+      font-family: inherit;
+      transition: border-color .15s, background .15s, transform .1s;
+    }
+    .fr-folder-card:hover { border-color: rgba(81,242,251,0.4); background: rgba(81,242,251,0.05); transform: translateY(-1px); }
+    .fr-folder-card.selected { border-color: var(--ds-cyan, #51f2fb); background: rgba(81,242,251,0.08); }
+    .fr-folder-card-icon { font-size: 26px; }
+    .fr-folder-card-name { font-size: 13px; font-weight: 600; }
+    .fr-folder-card-sub { font-size: 10.5px; color: rgba(255,255,255,0.45); min-height: 14px; text-align: center; }
+
+    /* ── First-run: plan cards (step 2) ───────────────── */
+    .fr-plan-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+    .fr-plan-card {
+      position: relative;
+      display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 13px 14px;
+      cursor: pointer;
+      color: var(--ds-text, #eaeaea);
+      font-family: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .fr-plan-card:hover { border-color: rgba(81,242,251,0.4); }
+    .fr-plan-card.selected { border-color: var(--ds-cyan, #51f2fb); background: rgba(81,242,251,0.08); }
+    .fr-plan-card-name { font-size: 13px; font-weight: 600; }
+    .fr-plan-card-desc { font-size: 10.5px; color: rgba(255,255,255,0.5); line-height: 1.45; }
+    .fr-plan-card-badge {
+      position: absolute; top: -8px; right: 10px;
+      background: var(--ds-cyan, #51f2fb); color: #06121a;
+      font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .fr-own-words-link {
+      display: inline-block; font-size: 11.5px; color: rgba(255,255,255,0.5);
+      cursor: pointer; margin-bottom: 8px; text-decoration: underline; text-underline-offset: 3px;
+    }
+    .fr-own-words-link:hover { color: var(--ds-cyan, #51f2fb); }
+    .fr-reassure {
+      text-align: center; font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 10px;
+    }
+    .fr-fail-note {
+      text-align: center; font-size: 11.5px; color: #fbbf24; margin-top: 10px; line-height: 1.5;
+    }
+
 </style>
 </head>
 <body>
@@ -4131,22 +4181,18 @@ html.show-kanji .footer-kanji { display: block; }
     </div>
   </div>
 
-  <!-- Model Download Overlay (first launch, model not yet cached) -->
-  <div class="model-dl-overlay hidden" id="modelDownloadOverlay" role="dialog" aria-modal="true" aria-label="Downloading AI model">
-    <div class="model-dl-card">
-      <div class="model-dl-icon">🧠</div>
-      <h2 class="model-dl-title">Setting up AI brain</h2>
-      <p class="model-dl-sub">
-        Downloading the local AI model — this happens once.<br>
-        <strong id="modelDlName" style="color:var(--ds-cyan);font-size:12px;"></strong>
-      </p>
-      <div class="model-dl-progress-wrap">
-        <div class="model-dl-progress-bar" id="modelDlBar" style="width:0%"></div>
-      </div>
-      <p class="model-dl-pct" id="modelDlPct">0%</p>
-      <p class="model-dl-status" id="modelDlStatus">Connecting to Ollama...</p>
-      <button class="model-dl-retry hidden" id="modelDlRetryBtn">Try Again</button>
+  <!-- One-time AI setup pill (first launch, model not yet cached — never blocks the UI) -->
+  <div class="model-dl-pill hidden" id="modelDownloadOverlay" role="status" aria-live="polite" aria-label="One-time AI setup">
+    <div class="model-dl-pill-top">
+      <span>🔒</span>
+      <span class="model-dl-pill-title" id="modelDlName">Downloading your private AI</span>
+      <span class="model-dl-pct" id="modelDlPct">0%</span>
     </div>
+    <div class="model-dl-progress-wrap">
+      <div class="model-dl-progress-bar" id="modelDlBar" style="width:0%"></div>
+    </div>
+    <p class="model-dl-status" id="modelDlStatus">One-time setup. After this, everything works offline.</p>
+    <button class="model-dl-retry hidden" id="modelDlRetryBtn">Try again</button>
   </div>
 
   <!-- Search Index Upgrade Banner (shown silently on startup when fullText is missing) -->
@@ -4355,57 +4401,84 @@ html.show-kanji .footer-kanji { display: block; }
   <div class="firstrun-overlay hidden" id="firstRunOverlay" role="dialog" aria-modal="true" aria-label="Welcome to System Janitor">
     <div class="firstrun-card">
 
-      <!-- Step 1: Welcome + Choose Folder -->
+      <!-- Step 1: Pick the mess -->
       <div class="firstrun-step active" id="frStep1">
         <div class="firstrun-icon">🧹</div>
-        <div class="firstrun-title">Let's organize your first folder</div>
-        <div class="firstrun-subtitle">Pick any messy folder. Tell us how you want it organized. Watch it happen.</div>
-        <div class="firstrun-folder-row">
-          <span class="firstrun-folder-display" id="frFolderDisplay">No folder selected</span>
-          <button class="btn btn-primary btn-sm" id="frChooseFolderBtn" style="font-size:13px;padding:9px 20px;">Choose Folder</button>
+        <div class="firstrun-title">Let's clean up your messiest folder.</div>
+        <div class="firstrun-subtitle">Everything happens on this Mac. No cloud, no uploads, no account. Your files are never sent anywhere — we can't see them even if we wanted to.</div>
+        <div class="fr-folder-cards">
+          <button class="fr-folder-card" id="frCardDownloads">
+            <span class="fr-folder-card-icon">📥</span>
+            <span class="fr-folder-card-name">Downloads</span>
+            <span class="fr-folder-card-sub" id="frCardDownloadsSub">&nbsp;</span>
+          </button>
+          <button class="fr-folder-card" id="frCardDesktop">
+            <span class="fr-folder-card-icon">🖥️</span>
+            <span class="fr-folder-card-name">Desktop</span>
+            <span class="fr-folder-card-sub" id="frCardDesktopSub">&nbsp;</span>
+          </button>
+          <button class="fr-folder-card" id="frCardBrowse">
+            <span class="fr-folder-card-icon">📁</span>
+            <span class="fr-folder-card-name">Somewhere else…</span>
+            <span class="fr-folder-card-sub" id="frCardBrowseSub">Pick any folder</span>
+          </button>
         </div>
-        <div class="firstrun-privacy">🔒 <span>100% local.</span> Your files never leave your computer.</div>
+        <div class="firstrun-privacy">🔒 <span>100% offline</span> after a one-time setup.</div>
         <div class="firstrun-actions">
-          <span class="firstrun-skip" id="frSkipBtn">Skip setup →</span>
+          <span class="firstrun-skip" id="frSkipBtn">I'll explore on my own →</span>
           <button class="btn btn-organize btn-sm" id="frNextToStep2Btn" disabled style="font-size:13px;padding:9px 24px;">Continue →</button>
         </div>
       </div>
 
-      <!-- Step 2: Prompt + Templates -->
+      <!-- Step 2: Pick the plan -->
       <div class="firstrun-step" id="frStep2">
-        <div class="firstrun-title">How do you want these organized?</div>
-        <div class="firstrun-file-count" id="frFileCount">Select a folder first</div>
-        <div class="firstrun-tmpl-chips" id="frTmplChips">
-          <span class="firstrun-tmpl-chip" data-prompt="Organize into folders by file type: Documents (doc, docx, pdf, txt), Images (jpg, png, gif, svg, webp), Videos (mp4, mov, avi, mkv), Audio (mp3, wav, flac, aac), Spreadsheets (xlsx, csv, xls), Archives (zip, rar, 7z, tar), and Other for everything else.">📁 Organize by file type</span>
-          <span class="firstrun-tmpl-chip" data-prompt="Organize by the year and month each file was last modified. Structure: Year folder → Month folder. Put files from the current month in a 'Recent' folder.">📅 Sort by date</span>
-          <span class="firstrun-tmpl-chip" data-prompt="Create two main folders: Documents (pdf, doc, docx, txt, md, xlsx, csv, pptx) and Media (jpg, png, gif, mp4, mov, mp3, wav, psd, svg). Put anything else in Miscellaneous.">📄 Docs vs Media</span>
-          <span class="firstrun-tmpl-chip" data-prompt="Sort files into Work and Personal folders based on filenames. Work: invoice, report, meeting, project, client, proposal, contract. Personal: vacation, photo, recipe, family, hobby. Unclear → Review folder.">🗂️ Work vs Personal</span>
-          <span class="firstrun-tmpl-chip" data-prompt="Move documents to Documents, images to Images, installers/DMGs/EXEs to Installers, archives (zip/rar) to Archives, and anything older than 90 days to Old Downloads. Leave recent files in place.">🧹 Clean Downloads</span>
-          <span class="firstrun-tmpl-chip" data-prompt="Move old files (6+ months) to Archive, keep recent organized by type.">📦 Archive old files</span>
+        <div class="firstrun-title" id="frStep2Title">How should this folder look when we're done?</div>
+        <div class="firstrun-file-count" id="frFileCount">&nbsp;</div>
+        <div class="firstrun-subtitle" style="margin-bottom:0;">Pick a style. You'll see the full plan before a single file moves.</div>
+        <div class="fr-plan-cards" id="frPlanCards">
+          <button class="fr-plan-card selected" data-prompt="Move documents to Documents, images to Images, installers/DMGs/EXEs to Installers, archives (zip/rar) to Archives, and anything older than 90 days to Old Files. Leave files from the last week in place.">
+            <span class="fr-plan-card-badge">Recommended</span>
+            <span class="fr-plan-card-name">🧹 Just clean it up</span>
+            <span class="fr-plan-card-desc">Sort by type, tuck away anything older than 90 days</span>
+          </button>
+          <button class="fr-plan-card" data-prompt="Organize into folders by file type: Documents (doc, docx, pdf, txt), Images (jpg, png, gif, svg, webp), Videos (mp4, mov, avi, mkv), Audio (mp3, wav, flac, aac), Spreadsheets (xlsx, csv, xls), Archives (zip, rar, 7z, tar), and Other for everything else.">
+            <span class="fr-plan-card-name">🗂️ By type</span>
+            <span class="fr-plan-card-desc">Documents, Images, Videos, Spreadsheets…</span>
+          </button>
+          <button class="fr-plan-card" data-prompt="Organize by the year and month each file was last modified. Structure: Year folder → Month folder. Put files from the current month in a 'Recent' folder.">
+            <span class="fr-plan-card-name">📅 By date</span>
+            <span class="fr-plan-card-desc">2026 → June, May, April…</span>
+          </button>
+          <button class="fr-plan-card" data-prompt="Sort files into Work and Personal folders based on filenames. Work: invoice, report, meeting, project, client, proposal, contract. Personal: vacation, photo, recipe, family, hobby. Unclear → Review folder.">
+            <span class="fr-plan-card-name">💼 Work vs Personal</span>
+            <span class="fr-plan-card-desc">Client files one side, life the other</span>
+          </button>
         </div>
-        <textarea id="frPromptArea" class="firstrun-prompt-area"
-          placeholder="e.g. Sort by file type — documents, images, videos, code"></textarea>
+        <span class="fr-own-words-link" id="frOwnWordsLink">Or describe it in your own words →</span>
+        <textarea id="frPromptArea" class="firstrun-prompt-area" style="display:none;"
+          placeholder="e.g. Put anything with 'invoice' or 'receipt' in a Money folder, photos in Photos, everything else by type"></textarea>
         <div class="firstrun-actions">
           <button class="btn btn-ghost btn-sm" id="frBackBtn">← Back</button>
-          <button class="btn btn-organize btn-sm" id="frAnalyzeBtn" disabled style="font-size:13px;padding:9px 28px;">Analyze →</button>
+          <button class="btn btn-organize btn-sm" id="frAnalyzeBtn" style="font-size:13px;padding:9px 28px;">Show me the plan →</button>
         </div>
+        <div class="fr-reassure" id="frReassure">This is just a preview. Nothing moves yet.</div>
       </div>
 
-      <!-- Step 3: Preview inside onboarding (reuses full preview overlay, so just a loading/message state here) -->
+      <!-- Step 3: Building the plan (the full preview opens in its own overlay when ready) -->
       <div class="firstrun-step" id="frStep3">
-        <div class="firstrun-icon">⏳</div>
-        <div class="firstrun-title">Analyzing your files...</div>
-        <div class="firstrun-subtitle" id="frAnalyzingMsg">Scanning and building your organization plan.</div>
+        <div class="firstrun-icon">🔎</div>
+        <div class="firstrun-title">Building your plan…</div>
+        <div class="firstrun-subtitle" id="frAnalyzingMsg">Reading your folder. Nothing is moving — you'll approve every step.</div>
         <div class="pr-progress-bar-wrap" style="margin:16px 0;">
           <div class="pr-progress-bar" id="frProgressBar" style="width:0%"></div>
         </div>
       </div>
 
-      <!-- Step 4: Success -->
+      <!-- Step 4: Done -->
       <div class="firstrun-step" id="frStep4">
         <div class="firstrun-icon">✅</div>
-        <div class="firstrun-title">Done!</div>
-        <div class="firstrun-subtitle">Your files have been organized.</div>
+        <div class="firstrun-title" id="frDoneTitle">Done.</div>
+        <div class="firstrun-subtitle" id="frDoneSub">All of it reversible.</div>
         <div class="firstrun-success-stats">
           <div class="firstrun-stat">
             <div class="firstrun-stat-num" id="frStatFiles">0</div>
@@ -4416,12 +4489,13 @@ html.show-kanji .footer-kanji { display: block; }
             <div class="firstrun-stat-label">Folders created</div>
           </div>
         </div>
+        <div class="fr-fail-note" id="frFailNote" style="display:none;"></div>
         <div class="firstrun-success-actions">
-          <button class="btn btn-success" id="frViewResultsBtn">📂 View Results</button>
-          <button class="btn btn-organize" id="frOrganizeAnotherBtn">↩ Organize Another Folder</button>
-          <button class="btn btn-ghost" id="frSetupAutoBtn">⚙️ Set Up Auto-Sorting</button>
+          <button class="btn btn-success" id="frViewResultsBtn">Open in Finder</button>
+          <button class="btn btn-ghost" id="frUndoAllBtn">↩ Put everything back</button>
+          <button class="btn btn-organize" id="frOrganizeAnotherBtn">Organize another folder</button>
         </div>
-        <div class="firstrun-setup-hint">Want continuous auto-sorting? Set up folder categories →</div>
+        <div class="firstrun-setup-hint">Want new files sorted automatically as they arrive? Set that up anytime from the main screen.</div>
       </div>
 
     </div>
