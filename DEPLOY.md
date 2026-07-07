@@ -84,7 +84,32 @@ No change needed here.
 
 ---
 
-## Step 7 — Go live
+## Step 7 — Run the device-binding migration (one-time)
+
+In the Supabase SQL Editor, run the `license_devices` block from `backend/schema.sql`
+(just the second CREATE TABLE — `license_keys` already exists in prod).
+This caps each key at 2 devices. Until you run it, validation "fails open"
+(keys work everywhere), so there's no rush — but do it before launch.
+
+Then redeploy the backend: `cd backend && npx vercel --prod --yes`
+
+---
+
+## Step 8 — Create your Stripe Payment Link
+
+Stripe Dashboard → Payment Links → New → your System Janitor product.
+Paste the link into `src/main/services/licenseService.js`:
+
+```js
+const CHECKOUT_URL = "https://buy.stripe.com/XXXX"; // ← your payment link
+```
+
+This powers the "Get a license" button on the in-app paywall. If left empty,
+the paywall shows your support email instead of a dead button.
+
+---
+
+## Step 9 — Go live
 
 In `src/main/services/licenseService.js`, change:
 
@@ -98,8 +123,14 @@ Rebuild and ship. Done.
 
 ## How the flow works end-to-end
 
-1. Customer pays on Stripe checkout
-2. Stripe fires `checkout.session.completed` to your webhook
-3. Webhook generates a UUID license key, inserts it into Supabase, emails it to customer
-4. Customer opens app → Settings → License → pastes key → clicks Activate
-5. App calls `/api/license/validate` → Supabase confirms key is active → cached 24 hours locally
+1. New user gets a **free trial: 300 file moves** (lifetime, per install) — no key needed
+2. Trial runs out → in-app paywall with your Stripe Payment Link
+3. Customer pays on Stripe checkout
+4. Stripe fires `checkout.session.completed` to your webhook
+5. Webhook generates a UUID license key, inserts it into Supabase, emails it to customer
+6. Customer opens app → Settings → License → pastes key → clicks Activate
+7. App calls `/api/license/validate` (with an anonymous device id — max 2 devices/key)
+   → Supabase confirms → cached locally, re-checked every 24 h
+8. Offline grace: a validated license keeps working **7 days** with no network,
+   so travel or an outage never locks out a paying customer
+9. Undo/redo and PII secure-move are NEVER license-gated — user data is never held hostage

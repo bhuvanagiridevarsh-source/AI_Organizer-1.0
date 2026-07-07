@@ -3342,6 +3342,7 @@ html.show-kanji .footer-kanji { display: block; }
       <button id="scanAllBtn">Scan All Files</button>
       <button id="newCategoryBtn">+ New Category</button>
       <button id="scanBtn">Scan Now</button>
+      <button id="insightsBtn">Insights</button>
       <button id="refreshFpBtn">Refresh</button>
       <button id="cleanPoolBtn">Clean Pool</button>
       <button id="clearLearningBtn">Clear Learning</button>
@@ -3351,6 +3352,10 @@ html.show-kanji .footer-kanji { display: block; }
       <button id="entLanBtn">LAN</button>
       <button id="entRetentionBtn">Retention</button>
     </div>
+
+    <!-- Trial status pill (hidden when licensed / testing) -->
+    <button id="trialPill" class="icon-btn" title="Free trial — click for details"
+      style="display:none;font-size:10px;padding:2px 10px;border-radius:999px;border:1px solid rgba(255,200,80,.35);color:#e8b955;background:rgba(255,200,80,.08);white-space:nowrap;"></button>
 
     <!-- Theme toggle -->
     <button class="icon-btn" id="themeToggle" title="Switch to light mode" style="font-size:14px">☾</button>
@@ -3421,6 +3426,9 @@ html.show-kanji .footer-kanji { display: block; }
         </button>
         <button class="rail-item" data-proxy="scanAllBtn">
           <div class="rail-dot"></div><span>scan all</span>
+        </button>
+        <button class="rail-item" data-proxy="insightsBtn">
+          <div class="rail-dot"></div><span>insights</span>
         </button>
       </div>
 
@@ -3573,8 +3581,9 @@ html.show-kanji .footer-kanji { display: block; }
           <!-- Classification Results -->
           <div id="tableContainer">
             <div class="empty-state">
-              <p>Click <strong>select folder</strong> in the sidebar to pick files.</p>
-              <p>Nothing moves until you click <strong>organize all</strong>.</p>
+              <p style="font-size:15px;font-weight:600;">Ready when you are.</p>
+              <p>Drop any folder here, or pick one from the sidebar.</p>
+              <p>You'll always see the plan first — <strong>nothing moves without your OK</strong>, and everything can be undone.</p>
             </div>
           </div>
           <!-- Activity feed -->
@@ -4280,14 +4289,14 @@ html.show-kanji .footer-kanji { display: block; }
 
         <div class="pr-deep-scan-row">
           <input type="checkbox" id="prDeepScan">
-          <label for="prDeepScan">Deep Scan — read file contents for more accurate sorting (slower)</label>
+          <label for="prDeepScan">Read inside files for smarter sorting (adds a few minutes for large folders)</label>
         </div>
 
         <div class="s-actions">
           <button class="btn btn-ghost btn-sm" id="prCloseBtn">Cancel</button>
           <button class="btn btn-ghost btn-sm" id="prHistoryBtn">🕐 History</button>
           <button class="btn btn-ghost btn-sm" id="prUndoLogBtn">↩ Undo Log</button>
-          <button class="btn btn-primary btn-sm" id="prAnalyzeBtn" disabled>Analyze →</button>
+          <button class="btn btn-primary btn-sm" id="prAnalyzeBtn" disabled>Preview my plan →</button>
         </div>
       </div>
 
@@ -4299,10 +4308,10 @@ html.show-kanji .footer-kanji { display: block; }
           <div class="pr-progress-bar" id="prProgressBar" style="width:0%"></div>
         </div>
         <div class="pr-batch-steps" id="prBatchSteps">
-          <div class="pr-batch-step" id="prstep-scanning"><span class="pr-batch-step-icon">⬜</span> Scanning files...</div>
-          <div class="pr-batch-step" id="prstep-analyzing"><span class="pr-batch-step-icon">⬜</span> AI analyzing structure...</div>
-          <div class="pr-batch-step" id="prstep-reasons"><span class="pr-batch-step-icon">⬜</span> Generating explanations...</div>
-          <div class="pr-batch-step" id="prstep-preview"><span class="pr-batch-step-icon">⬜</span> Building preview...</div>
+          <div class="pr-batch-step" id="prstep-scanning"><span class="pr-batch-step-icon">⬜</span> Reading your folder…</div>
+          <div class="pr-batch-step" id="prstep-analyzing"><span class="pr-batch-step-icon">⬜</span> Deciding where each file belongs…</div>
+          <div class="pr-batch-step" id="prstep-reasons"><span class="pr-batch-step-icon">⬜</span> Writing a reason for each move…</div>
+          <div class="pr-batch-step" id="prstep-preview"><span class="pr-batch-step-icon">⬜</span> Putting the plan together…</div>
         </div>
         <button class="btn btn-ghost btn-sm" id="prCancelPipeline" style="margin-top:12px;">Cancel</button>
       </div>
@@ -4310,31 +4319,34 @@ html.show-kanji .footer-kanji { display: block; }
   </div>
 
   <!-- Smart Reorganize: Preview Overlay -->
-  <div class="settings-overlay hidden" id="reorgPreviewOverlay" role="dialog" aria-modal="true" aria-label="Reorganization Preview">
+  <div class="settings-overlay hidden" id="reorgPreviewOverlay" role="dialog" aria-modal="true" aria-label="Organization plan preview">
     <div class="settings-panel pr-preview-panel">
-      <h2>Reorganization Preview</h2>
-      <p class="pr-preview-subtitle" id="prPreviewSubtitle">"..."</p>
+      <h2>Here's the plan — nothing has moved yet</h2>
+      <p class="pr-preview-subtitle" id="prPreviewSubtitle"></p>
 
-      <div class="pr-summary-bar" id="prPreviewSummary">Calculating...</div>
+      <div class="pr-summary-bar" id="prPreviewSummary">Calculating…</div>
 
-      <div class="pr-section-label">Proposed folder structure</div>
+      <div class="pr-section-label">Your new folders</div>
       <div class="pr-tree-wrap" id="prTreeContainer"></div>
 
       <div class="pr-section-label">
-        Files to move
-        <span style="font-size:10px;color:var(--ds-text-dim);text-transform:none;letter-spacing:0;">(uncheck to skip · 💡 = why this folder · 🟡 = low confidence, review manually)</span>
+        Every move, file by file
+        <span style="font-size:10px;color:var(--ds-text-dim);text-transform:none;letter-spacing:0;">Uncheck anything you want left alone · 💡 shows why · 🟡 = we weren't sure, so it starts unchecked</span>
       </div>
       <div class="pr-file-list" id="prFileList"></div>
 
       <div id="prSaveTmplRow" style="margin-bottom:10px;display:none;">
-        <span style="font-size:12px;color:var(--ds-text-dim);">💡 Save this prompt as a template?</span>
+        <span style="font-size:12px;color:var(--ds-text-dim);">💡 Save these instructions to reuse later?</span>
         <button class="btn btn-ghost btn-sm" id="prSaveTmplBtn" style="margin-left:8px;">Save Template</button>
       </div>
 
       <div class="s-actions">
-        <button class="btn btn-ghost btn-sm" id="prPreviewCancel">Cancel</button>
-        <button class="btn btn-success btn-sm" id="prApproveBtn">Approve &amp; Organize</button>
+        <button class="btn btn-ghost btn-sm" id="prPreviewCancel">← Try a different style</button>
+        <button class="btn btn-success btn-sm" id="prApproveBtn">Move my files</button>
       </div>
+      <p style="text-align:center;font-size:11px;color:var(--ds-text-dim);margin-top:8px;">
+        ↩ Files are moved, not copied — one click puts every single one back exactly where it was.
+      </p>
     </div>
   </div>
 
@@ -4498,6 +4510,87 @@ html.show-kanji .footer-kanji { display: block; }
         <div class="firstrun-setup-hint">Want new files sorted automatically as they arrive? Set that up anytime from the main screen.</div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Insights: local storage intelligence + duplicate finder -->
+  <div class="settings-overlay hidden" id="insightsOverlay" role="dialog" aria-modal="true" aria-label="Folder insights">
+    <div class="settings-panel" style="max-width:640px;max-height:82vh;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <h2 style="margin:0;">Insights</h2>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" id="insFolderBtn" title="Choose a different folder">📁 Change folder</button>
+          <button class="btn btn-ghost btn-sm" id="insRescanBtn">↻ Rescan</button>
+          <button class="btn btn-ghost btn-sm" id="insCloseBtn">✕</button>
+        </div>
+      </div>
+      <p id="insSubtitle" style="font-size:11.5px;color:#888;margin:4px 0 14px;">What's really living in your folder — computed on your device, nothing leaves it.</p>
+
+      <!-- Scanning state -->
+      <div id="insScanning" style="display:none;text-align:center;padding:28px 0;">
+        <div style="font-size:22px;margin-bottom:8px;">🔍</div>
+        <div id="insScanStatus" style="font-size:12px;color:#aaa;">Reading your folder…</div>
+      </div>
+
+      <!-- Report -->
+      <div id="insReport" style="display:none;">
+        <!-- Summary chips -->
+        <div id="insChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
+
+        <!-- Duplicates -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:14px 0 6px;">Exact duplicates</div>
+        <div id="insDupeSummary" style="font-size:12px;color:#bbb;margin-bottom:8px;"></div>
+        <div id="insDupeList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+        <button class="btn btn-primary btn-sm" id="insArchiveDupesBtn" style="display:none;">Archive duplicates safely</button>
+        <div id="insDupeNote" style="font-size:10.5px;color:#666;margin-top:6px;display:none;">
+          Keeps the newest copy of each file. The rest move to <code>_Duplicates</code> — nothing is deleted, and one click in the Undo Log puts everything back.
+        </div>
+
+        <!-- Space by category -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Where the space goes</div>
+        <div id="insCatList" style="display:flex;flex-direction:column;gap:5px;"></div>
+
+        <!-- Largest files -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Largest files</div>
+        <div id="insLargestList" style="display:flex;flex-direction:column;gap:4px;"></div>
+
+        <!-- Stale files -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Untouched for 6+ months</div>
+        <div id="insStaleSummary" style="font-size:12px;color:#bbb;margin-bottom:6px;"></div>
+        <div id="insStaleList" style="display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
+
+      <!-- Empty / error state -->
+      <div id="insEmpty" style="display:none;text-align:center;padding:24px 0;font-size:12px;color:#888;"></div>
+    </div>
+  </div>
+
+  <!-- Paywall: trial exhausted -->
+  <div class="settings-overlay hidden" id="paywallOverlay" role="dialog" aria-modal="true" aria-label="Free trial finished">
+    <div class="settings-panel" style="max-width:420px;text-align:center;">
+      <div style="font-size:34px;margin-bottom:8px;">🎉</div>
+      <h2 style="margin-bottom:6px;">Your free trial did its job</h2>
+      <p style="font-size:12.5px;color:#aaa;line-height:1.6;margin-bottom:4px;">
+        You've organized <strong id="paywallMovesUsed">300</strong> files with System Janitor —
+        that mess didn't sort itself.
+      </p>
+      <p style="font-size:12.5px;color:#aaa;line-height:1.6;margin-bottom:16px;">
+        A license unlocks unlimited organizing on up to 2 devices.
+        Everything stays on your computer — a license never adds cloud anything.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+        <button class="btn btn-primary" id="paywallBuyBtn" style="min-width:220px;">Get a license</button>
+        <button class="btn btn-ghost btn-sm" id="paywallHaveKeyBtn">I already have a key</button>
+        <button class="btn btn-ghost btn-sm" id="paywallLaterBtn" style="color:#777;font-size:11px;">Not now</button>
+      </div>
+      <p id="paywallNoUrlHint" style="display:none;font-size:11px;color:#888;margin-top:12px;">
+        Purchasing isn't open quite yet — email
+        <a href="mailto:bhuvanagiridevarsh@gmail.com" style="color:var(--ds-cyan);">bhuvanagiridevarsh@gmail.com</a>
+        for a key.
+      </p>
+      <p style="font-size:10.5px;color:#666;margin-top:14px;">
+        Undo always works — locked or not, your files are never held hostage.
+      </p>
     </div>
   </div>
 

@@ -4,12 +4,21 @@
  * Flow:
  *   1. User enters license key in your UI
  *   2. validateLicense(key) hits your Stripe backend to verify
- *   3. Result is cached locally (encrypted) for 24 hours
+ *      (sends a stable per-install device id so keys can't be shared infinitely)
+ *   3. Result is cached locally (encrypted); re-checked every 24 h, but a paying
+ *      customer stays unlocked for a 7-day OFFLINE GRACE window so a flaky
+ *      connection never locks them out
  *   4. canOrganizeFiles() checks the cache — no network needed
+ *
+ * Free trial:
+ *   Unlicensed users may organize up to TRIAL_FILE_LIMIT files (lifetime,
+ *   per install). Every gated move consumes from the allowance via
+ *   consumeTrialMoves(n). After that, getAccess() flips to "locked" and the
+ *   UI shows the paywall. Undo/redo and PII secure-moves are NEVER gated.
  *
  * Usage:
  *   const license = require("./services/licenseService");
- *   const valid = await license.validateLicense("sk_live_abc123");
+ *   const access = license.getAccess();   // { allowed, mode, movesLeft }
  *   if (license.canOrganizeFiles()) { ... }
  */
 
@@ -62,11 +71,25 @@ const TESTING_MODE = true; // ← set false when ready to charge (after Stripe +
 
 const LICENSE_API_URL = "https://backend-two-mu-53.vercel.app/api/license/validate";
 
+// Your Stripe Payment Link (Stripe Dashboard → Payment Links → New).
+// Shown on the paywall's "Get a license" button. Leave "" until created —
+// the UI falls back to showing the support email instead of a dead button.
+const CHECKOUT_URL = "";
+
 // True when the URL has not been configured yet (prevents a crash on new URL())
 const _API_URL_CONFIGURED = LICENSE_API_URL.startsWith("https://");
 
-// Cache validity period (24 hours in milliseconds)
+// Cache validity period (24 hours in milliseconds) — how often we *try* to revalidate
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Offline grace: a previously-validated license keeps working this long even if
+// the license server is unreachable. Prevents locking out paying customers on
+// planes, behind firewalls, or during a Vercel outage.
+const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Free trial: lifetime file-move allowance per install before a license is required.
+// ~2–3 typical Downloads-folder cleanups — enough to prove the product works.
+const TRIAL_FILE_LIMIT = 300;
 
 // API request timeout
 const REQUEST_TIMEOUT_MS = 10000;
@@ -82,8 +105,27 @@ const store = new Store({
     plan: { type: "string", default: "" },
     expiresAt: { type: "number", default: 0 }, // Unix ms when cache expires
     validatedAt: { type: "number", default: 0 },
+    trialMovesUsed: { type: "number", default: 0 }, // lifetime trial consumption
+    deviceId: { type: "string", default: "" },      // stable per-install id
   },
 });
+
+// ── Device identity ────────────────────────────────────────
+
+/**
+ * Stable, anonymous per-install device id. Generated once, persisted.
+ * Sent with license validation so the backend can cap devices per key.
+ * Contains no hardware serials or personal data.
+ */
+function getDeviceId() {
+  let id = store.get("deviceId");
+  if (!id) {
+    const crypto = require("crypto");
+    id = crypto.randomUUID();
+    store.set("deviceId", id);
+  }
+  return id;
+}
 
 // ── Network validation ─────────────────────────────────────
 
@@ -98,7 +140,11 @@ function _callBackend(licenseKey) {
     );
   }
   return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({ key: licenseKey });
+    const postData = JSON.stringify({
+      key: licenseKey,
+      device_id: getDeviceId(),
+      app_version: (() => { try { return require("electron").app.getVersion(); } catch { return "unknown"; } })(),
+    });
     const url = new URL(LICENSE_API_URL);
 
     const req = https.request(
@@ -158,15 +204,23 @@ async function validateLicense(key) {
     store.set("validatedAt", now);
     store.set("expiresAt", now + CACHE_TTL_MS);
 
+    // Human-readable reason for rejections (e.g. device limit reached)
+    let error;
+    if (!response.valid && response.reason === "device_limit") {
+      error = "This key is already active on the maximum number of devices. Remove it from another device or contact support.";
+    }
+
     return {
       valid: !!response.valid,
       plan: response.plan || "",
+      ...(error ? { error } : {}),
     };
   } catch (err) {
-    // Network error — if we have a previous valid cache, keep it alive
-    // (don't lock users out because of a transient network issue)
+    // Network error — if we have a previous valid cache inside the offline
+    // grace window, keep it alive (don't lock users out for a transient issue)
     const cached = store.get("status");
-    if (cached === "valid" && !_isCacheExpired()) {
+    const validatedAt = store.get("validatedAt") || 0;
+    if (cached === "valid" && Date.now() < validatedAt + OFFLINE_GRACE_MS) {
       return {
         valid: true,
         plan: store.get("plan"),
@@ -183,21 +237,82 @@ async function validateLicense(key) {
 }
 
 /**
+ * Full access picture — the single source of truth for gating.
+ *
+ * @returns {{allowed: boolean, mode: "testing"|"licensed"|"trial"|"locked",
+ *            movesLeft: number, movesTotal: number}}
+ *   mode "licensed": valid license within the 7-day offline grace window
+ *   mode "trial":    no license, trial allowance remaining
+ *   mode "locked":   trial exhausted and no valid license
+ */
+function getAccess() {
+  const used = store.get("trialMovesUsed") || 0;
+  const movesLeft = Math.max(0, TRIAL_FILE_LIMIT - used);
+
+  if (TESTING_MODE) {
+    return { allowed: true, mode: "testing", movesLeft: Infinity, movesTotal: Infinity };
+  }
+
+  // Licensed path: status must be valid AND last successful validation must be
+  // within the offline grace window. (expiresAt only marks when we should
+  // silently re-check — it does not lock the user out by itself.)
+  const status = store.get("status");
+  const validatedAt = store.get("validatedAt") || 0;
+  if (status === "valid" && Date.now() < validatedAt + OFFLINE_GRACE_MS) {
+    return { allowed: true, mode: "licensed", movesLeft: Infinity, movesTotal: Infinity };
+  }
+
+  // Trial path
+  if (movesLeft > 0) {
+    return { allowed: true, mode: "trial", movesLeft, movesTotal: TRIAL_FILE_LIMIT };
+  }
+
+  return { allowed: false, mode: "locked", movesLeft: 0, movesTotal: TRIAL_FILE_LIMIT };
+}
+
+/**
  * Quick synchronous check: can the user organize files right now?
- * Returns false if no valid cached license or if the cache has expired.
+ * (Back-compat wrapper around getAccess().)
  */
 function canOrganizeFiles() {
-  if (TESTING_MODE) return true;
-  const status = store.get("status");
-  if (status !== "valid") return false;
-  if (_isCacheExpired()) return false;
-  return true;
+  return getAccess().allowed;
+}
+
+/**
+ * Consume n file-moves from the trial allowance. No-op for licensed users
+ * and in TESTING_MODE. Call AFTER a gated move succeeds.
+ * @param {number} n — number of files moved (default 1)
+ */
+function consumeTrialMoves(n = 1) {
+  const access = getAccess();
+  if (access.mode !== "trial") return;
+  const used = (store.get("trialMovesUsed") || 0) + Math.max(0, Math.floor(n));
+  store.set("trialMovesUsed", used);
+}
+
+/**
+ * If a key is stored and the 24 h cache marker has lapsed, silently
+ * revalidate against the backend. Never throws; never downgrades access on
+ * pure network failure (the offline grace window handles that).
+ * Call once on app start, after a short delay.
+ */
+async function revalidateCached() {
+  if (TESTING_MODE) return;
+  const key = store.get("licenseKey");
+  if (!key || store.get("status") !== "valid" || !_isCacheExpired()) return;
+  try {
+    await validateLicense(key); // updates validatedAt/expiresAt on success
+    console.log("[licenseService] Background revalidation complete");
+  } catch (err) {
+    console.warn(`[licenseService] Background revalidation failed: ${err?.message}`);
+  }
 }
 
 /**
  * Get the currently stored license info (for displaying in settings).
  */
 function getLicenseInfo() {
+  const access = getAccess();
   return {
     key: store.get("licenseKey") || "",
     status: store.get("status") || "unknown",
@@ -205,14 +320,26 @@ function getLicenseInfo() {
     validatedAt: store.get("validatedAt") || 0,
     expiresAt: store.get("expiresAt") || 0,
     cached: !_isCacheExpired(),
+    // Access summary for the UI (trial banner, paywall, settings row)
+    mode: access.mode,
+    trialMovesLeft: access.mode === "trial" ? access.movesLeft : 0,
+    trialMovesTotal: TRIAL_FILE_LIMIT,
+    testingMode: TESTING_MODE,
+    buyUrl: CHECKOUT_URL,
   };
 }
 
 /**
  * Clear stored license (logout / deactivate).
+ * Only removes license fields — the trial ledger and device id survive,
+ * so deactivating a key can never refill a used-up trial.
  */
 function clearLicense() {
-  store.clear();
+  store.delete("licenseKey");
+  store.delete("status");
+  store.delete("plan");
+  store.delete("validatedAt");
+  store.delete("expiresAt");
 }
 
 // ── Internals ──────────────────────────────────────────────
@@ -225,6 +352,10 @@ function _isCacheExpired() {
 module.exports = {
   validateLicense,
   canOrganizeFiles,
+  getAccess,
+  consumeTrialMoves,
+  revalidateCached,
   getLicenseInfo,
+  getDeviceId,
   clearLicense,
 };

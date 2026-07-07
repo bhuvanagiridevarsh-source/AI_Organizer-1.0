@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("api", {
     knownFolders: () => ipcRenderer.invoke("app:known-folders"),
     /** Open a folder in Finder/Explorer. */
     openPath: (p) => ipcRenderer.invoke("shell:open-path", p),
+    openUrl: (u) => ipcRenderer.invoke("shell:open-url", u),
   },
 
   // ── Model download ────────────────────────────────────
@@ -69,13 +70,22 @@ contextBridge.exposeInMainWorld("api", {
     validate: (key) => ipcRenderer.invoke("license:validate", key),
     check: () => ipcRenderer.invoke("license:check"),
     info: () => ipcRenderer.invoke("license:info"),
+    access: () => ipcRenderer.invoke("license:access"),
     clear: () => ipcRenderer.invoke("license:clear"),
+    onLocked: (callback) => ipcRenderer.on("license:locked", (_e, data) => callback(data)),
   },
 
   // ── File operations ──────────────────────────────────
   file: {
     move:     (source, dest) => ipcRenderer.invoke("file:move", source, dest),
     undoMove: (from, to)     => ipcRenderer.invoke("file:undo-move", from, to),
+  },
+
+  // ── Insights: storage report + duplicate finder ──────
+  insights: {
+    scan: (rootDir) => ipcRenderer.invoke("insights:scan", rootDir),
+    archiveDuplicates: (rootDir, groups) => ipcRenderer.invoke("insights:archive-duplicates", rootDir, groups),
+    onProgress: (callback) => ipcRenderer.on("insights:progress", (_e, data) => callback(data)),
   },
 
   // ── Classification ───────────────────────────────────

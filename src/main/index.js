@@ -684,6 +684,13 @@ app.whenReady().then(async () => {
       // most future files for that category hit the ≥70% tier automatically.
       //
       async (filePath) => {
+        // License/trial gate: when locked, the watcher must not silently
+        // consume files. Leave them in place and let the paywall UI explain.
+        if (!license.canOrganizeFiles()) {
+          console.log("[main] Watcher: skipping auto-sort (trial exhausted, no license)");
+          mainWindow?.webContents.send("license:locked", { source: "watcher" });
+          return null;
+        }
         const folders = await scanUserFolders(DEST_DIR);
         const result  = await classifyFile(filePath, DEST_DIR, folders);
         if (!result || !result.category) return null;
@@ -701,6 +708,7 @@ app.whenReady().then(async () => {
         if (confidence >= AUTO_MOVE_THRESHOLD || !hasRunnerUp) {
           const dest = path.join(DEST_DIR, result.category, filename);
           const finalDest = await safeMoveFile(filePath, dest);
+          license.consumeTrialMoves(1);
           // Record BEFORE indexing so an undo record exists even if later steps throw.
           await logMoveForUndo("auto-sort", filePath, finalDest, result.category);
           try {
@@ -853,6 +861,11 @@ app.whenReady().then(async () => {
   } catch (err) {
     console.warn(`[main] Background learner init failed: ${err.message}`);
   }
+
+  // ── License: silent background revalidation (never blocks startup) ──
+  setTimeout(() => {
+    license.revalidateCached().catch(() => {});
+  }, 10_000);
 
   // ── 3. Auto-update (silent, never crashes the app) ──
   try {
@@ -1082,6 +1095,63 @@ ipcMain.handle("license:info", () => {
   return license.getLicenseInfo();
 });
 
+ipcMain.handle("license:access", () => {
+  return license.getAccess();
+});
+
+// Open an external https URL (checkout page, docs). Allowlist-only.
+ipcMain.handle("shell:open-url", async (_event, url) => {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== "https:") return { error: "Only https URLs allowed" };
+    const { shell } = require("electron");
+    await shell.openExternal(u.toString());
+    return { ok: true };
+  } catch (err) {
+    return { error: String(err?.message || err) };
+  }
+});
+
+// ── Insights: local storage intelligence + duplicate finder ──────────
+// Report generation is free (read-only). The archive ACTION moves files,
+// so it goes through the same license/trial gate as every other organizer.
+ipcMain.handle("insights:scan", async (event, rootDir) => {
+  const { scanInsights } = require("./services/InsightsService");
+  const send = (p) => {
+    try { event.sender.send("insights:progress", p); } catch { /* window gone */ }
+  };
+  return scanInsights(rootDir, send);
+});
+
+ipcMain.handle("insights:archive-duplicates", async (_event, rootDir, groups) => {
+  if (!license.canOrganizeFiles()) {
+    throw new Error("LICENSE_LOCKED: Free trial used up — activate a license to keep organizing");
+  }
+  const { archiveDuplicates } = require("./services/InsightsService");
+
+  // Collect every move into ONE undo-log operation so a single click restores all
+  const undoMoves = [];
+  const result = await archiveDuplicates(rootDir, groups, async (fromPath, toPath) => {
+    undoMoves.push({
+      fileName: path.basename(toPath),
+      fromPath,
+      toPath,
+      movedAt: new Date().toISOString(),
+      reason: "duplicate",
+    });
+  });
+
+  license.consumeTrialMoves(result.moved);
+  if (undoMoves.length) {
+    try {
+      await undoLogRecord("duplicates", undoMoves, `Archived ${undoMoves.length} duplicate file${undoMoves.length === 1 ? "" : "s"} → _Duplicates`);
+    } catch (err) {
+      console.warn(`[main] Failed to record duplicate-archive undo op: ${err.message}`);
+    }
+  }
+  return result;
+});
+
 ipcMain.handle("license:clear", () => {
   license.clearLicense();
   return true;
@@ -1089,11 +1159,13 @@ ipcMain.handle("license:clear", () => {
 
 // File operations
 ipcMain.handle("file:move", async (_event, source, destination) => {
-  // Gate behind license check
+  // Gate behind license/trial check. "LICENSE_LOCKED:" prefix lets the
+  // renderer distinguish the paywall case from real move failures.
   if (!license.canOrganizeFiles()) {
-    throw new Error("License required to organize files");
+    throw new Error("LICENSE_LOCKED: Free trial used up — activate a license to keep organizing");
   }
   const finalPath = await safeMoveFile(source, destination);
+  license.consumeTrialMoves(1);
   await logMoveForUndo("manual", source, finalPath, path.basename(path.dirname(finalPath)));
 
   // ── Cloud Sync: fire-and-forget copy to enabled cloud connectors ──
@@ -1976,10 +2048,14 @@ ipcMain.handle("watcher:disambiguation-choice", async (_event, payload) => {
     } = payload;
 
     if (!filePath || !chosenCategory) return { success: false, error: "Missing filePath or chosenCategory" };
+    if (!license.canOrganizeFiles()) {
+      return { success: false, error: "LICENSE_LOCKED: Free trial used up — activate a license to keep organizing" };
+    }
 
     // ── Move the file ───────────────────────────────────────────────────
     const dest = path.join(currentBaseDir, chosenCategory, filename);
     const finalDest = await safeMoveFile(filePath, dest);
+    license.consumeTrialMoves(1);
     await logMoveForUndo("classification", filePath, finalDest, chosenCategory);
 
     // ── Index for chat search ───────────────────────────────────────────
@@ -3177,7 +3253,13 @@ ipcMain.handle("prompt-reorg:preview", async (_e, userPrompt, targetDirectory, m
 
 ipcMain.handle("prompt-reorg:execute", async (_e, preview) => {
   notifyUserActivity();
+  // Gate behind license/trial — this path moves many files at once and was
+  // previously ungated (free bypass of the paywall).
+  if (!license.canOrganizeFiles()) {
+    throw new Error("LICENSE_LOCKED: Free trial used up — activate a license to keep organizing");
+  }
   const result = await prExecutePreview(preview);
+  license.consumeTrialMoves(result?.moved || 0);
   // Notify renderer for post-operation toast
   const win = BrowserWindow.getAllWindows()[0];
   if (win && !win.isDestroyed()) {

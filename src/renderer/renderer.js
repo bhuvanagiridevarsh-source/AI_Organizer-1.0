@@ -157,7 +157,8 @@ async function doRedo() {
     showToast(`↪ Redone: ${op.filename}`);
   } catch (err) {
     redoStack.push(op);
-    showToast(`Redo failed: ${err.message || err}`);
+    if (isLicenseLockError(err)) handleLicenseLock();
+    else showToast(`Redo failed: ${err.message || err}`);
   }
   updateUndoRedoButtons();
 }
@@ -1001,8 +1002,8 @@ async function organizeFiles(onlyApproved) {
       entry.status   = "error";
       entry.errorMsg = String(err.message || err);
       errors++;
-      if (err.message && err.message.includes("License required")) {
-        feedAdd(`License required — open Settings → License to activate your key.`, true);
+      if (isLicenseLockError(err)) {
+        handleLicenseLock();
         organizeBtn.disabled = false;
         confirmBtn.disabled  = false;
         render();
@@ -1016,6 +1017,7 @@ async function organizeFiles(onlyApproved) {
   if (corrections.length) {
     try { await window.api.learning.recordBatch(corrections, DEST_DIR); } catch {}
   }
+  refreshTrialPill();
 
   // Audit log for each move (plain text — both modes; structured JSON — work only)
   for (const entry of toMove) {
@@ -1619,18 +1621,28 @@ function exitBossDashboard() {
   render();
 }
 
-// ── Settings panel ───────────────────────────────────────────
+// ── License / trial / paywall ────────────────────────────────
+let _licenseBuyUrl = "";
+let _paywallShownThisSession = false;
+
 async function refreshLicenseUI() {
   const statusEl = $("licenseStatusRow");
   const deactivateBtn = $("deactivateLicenseBtn");
   if (!statusEl || !window.api || !window.api.license) return;
   try {
     const info = await window.api.license.info();
-    if (info.status === "valid" && info.cached) {
-      statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Licensed</span> &mdash; key: <code style="font-size:var(--text-xs);font-family:var(--font-mono)">${info.key.slice(0, 8)}…</code>`;
+    _licenseBuyUrl = info.buyUrl || "";
+    if (info.mode === "licensed" || (info.status === "valid" && info.cached)) {
+      statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Licensed</span> &mdash; unlimited organizing &mdash; key: <code style="font-size:var(--text-xs);font-family:var(--font-mono)">${info.key.slice(0, 8)}…</code>`;
       if (deactivateBtn) deactivateBtn.style.display = "inline-block";
     } else if (info.status === "invalid") {
       statusEl.innerHTML = `<span style="color:var(--color-error);">Invalid key.</span> Enter a valid license key below.`;
+      if (deactivateBtn) deactivateBtn.style.display = "none";
+    } else if (info.mode === "trial") {
+      statusEl.innerHTML = `<span style="color:#e8b955;">Free trial</span> &mdash; <strong>${info.trialMovesLeft}</strong> of ${info.trialMovesTotal} file moves left. Activate a key for unlimited.`;
+      if (deactivateBtn) deactivateBtn.style.display = "none";
+    } else if (info.mode === "locked") {
+      statusEl.innerHTML = `<span style="color:var(--color-error);">Trial finished.</span> Enter a license key to keep organizing — undo still works without one.`;
       if (deactivateBtn) deactivateBtn.style.display = "none";
     } else {
       statusEl.textContent = "No license activated. Enter your key below.";
@@ -1638,6 +1650,56 @@ async function refreshLicenseUI() {
     }
   } catch {
     statusEl.textContent = "Could not read license status.";
+  }
+  refreshTrialPill();
+}
+
+/** Topbar pill: "Trial · N left". Hidden when licensed or in testing mode. */
+async function refreshTrialPill() {
+  const pill = $("trialPill");
+  if (!pill || !window.api?.license?.access) return;
+  try {
+    const a = await window.api.license.access();
+    if (a.mode === "trial") {
+      pill.textContent = `Trial · ${a.movesLeft} left`;
+      pill.style.display = "inline-block";
+    } else if (a.mode === "locked") {
+      pill.textContent = "Trial finished";
+      pill.style.display = "inline-block";
+    } else {
+      pill.style.display = "none";
+    }
+  } catch { /* non-fatal */ }
+}
+
+function showPaywall() {
+  const overlay = $("paywallOverlay");
+  if (!overlay) return;
+  const usedEl = $("paywallMovesUsed");
+  window.api.license.info().then((info) => {
+    if (usedEl) usedEl.textContent = String(info.trialMovesTotal || 300);
+    const hint = $("paywallNoUrlHint");
+    const buyBtn = $("paywallBuyBtn");
+    if (!info.buyUrl && hint && buyBtn) {
+      buyBtn.style.display = "none";
+      hint.style.display = "block";
+    }
+  }).catch(() => {});
+  overlay.classList.remove("hidden");
+}
+
+/** True when the error message marks a paywall lock (not a real failure). */
+function isLicenseLockError(err) {
+  const m = String((err && err.message) || err || "");
+  return m.includes("LICENSE_LOCKED") || m.includes("License required");
+}
+
+function handleLicenseLock() {
+  refreshTrialPill();
+  feedAdd("Free trial finished — activate a license to keep organizing. Your files are untouched and undo still works.", true);
+  if (!_paywallShownThisSession) {
+    _paywallShownThisSession = true;
+    showPaywall();
   }
 }
 
@@ -1788,10 +1850,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         const result = await window.api.license.validate(key);
         if (result.valid) {
           licenseKeyInput.value = "";
-          if (statusEl) { statusEl.textContent = "License activated!"; statusEl.style.color = "var(--color-success)"; }
+          if (statusEl) { statusEl.textContent = "License activated — unlimited organizing unlocked!"; statusEl.style.color = "var(--color-success)"; }
+          $("paywallOverlay")?.classList.add("hidden");
+          _paywallShownThisSession = false;
           refreshLicenseUI();
         } else {
-          if (statusEl) { statusEl.textContent = "Invalid key — check you pasted it correctly."; statusEl.style.color = "var(--color-error)"; }
+          const msg = result.error || "Invalid key — check you pasted it correctly.";
+          if (statusEl) { statusEl.textContent = msg; statusEl.style.color = "var(--color-error)"; }
         }
       } catch (err) {
         if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.style.color = "var(--color-error)"; }
@@ -1809,6 +1874,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshLicenseUI();
     });
   }
+
+  // Paywall controls
+  $("paywallBuyBtn")?.addEventListener("click", () => {
+    if (_licenseBuyUrl) window.api.shell.openUrl(_licenseBuyUrl);
+  });
+  $("paywallHaveKeyBtn")?.addEventListener("click", () => {
+    $("paywallOverlay")?.classList.add("hidden");
+    openSettings();
+    setTimeout(() => $("licenseKeyInput")?.focus(), 150);
+  });
+  $("paywallLaterBtn")?.addEventListener("click", () => {
+    $("paywallOverlay")?.classList.add("hidden");
+  });
+  $("trialPill")?.addEventListener("click", () => showPaywall());
+
+  // Watcher hit the lock while auto-sorting in the background
+  if (window.api?.license?.onLocked) {
+    window.api.license.onLocked(() => handleLicenseLock());
+  }
+  refreshTrialPill();
 
   // Identity profile controls
   const buildProfileBtn = $("buildProfileBtn");
@@ -4607,7 +4692,11 @@ async function openLanConfigModal() {
         } catch (_) {}
       }
     } catch (err) {
-      showToast("Organize failed: " + (err.message || err), 5000);
+      if (isLicenseLockError(err)) {
+        handleLicenseLock();
+      } else {
+        showToast("Organize failed: " + (err.message || err), 5000);
+      }
       prApproveBtn.disabled = false;
       prApproveBtn.textContent = "Approve & Organize";
     }
@@ -5225,7 +5314,11 @@ async function openLanConfigModal() {
           } catch (_) {}
         }
       } catch (err) {
-        showToast('Organize failed: ' + (err.message || err), 5000);
+        if (isLicenseLockError(err)) {
+          handleLicenseLock();
+        } else {
+          showToast('Organize failed: ' + (err.message || err), 5000);
+        }
         prApproveBtn.disabled = false;
         refreshApproveCount();
       }
@@ -5894,4 +5987,215 @@ if (window.api?.on?.promptReorgExecuted) {
     });
   }
 
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// INSIGHTS — local storage intelligence + duplicate finder
+// Report is read-only (free). Archiving duplicates moves files, so it
+// runs through the same license/trial gate as every organizer path.
+// ═══════════════════════════════════════════════════════════════════
+(() => {
+  const overlay = $("insightsOverlay");
+  const openBtn = $("insightsBtn");
+  if (!overlay || !openBtn || !window.api?.insights) return;
+
+  const els = {
+    scanning: $("insScanning"),
+    scanStatus: $("insScanStatus"),
+    report: $("insReport"),
+    empty: $("insEmpty"),
+    subtitle: $("insSubtitle"),
+    chips: $("insChips"),
+    dupeSummary: $("insDupeSummary"),
+    dupeList: $("insDupeList"),
+    archiveBtn: $("insArchiveDupesBtn"),
+    dupeNote: $("insDupeNote"),
+    catList: $("insCatList"),
+    largestList: $("insLargestList"),
+    staleSummary: $("insStaleSummary"),
+    staleList: $("insStaleList"),
+  };
+
+  let insDir = null;      // folder being analyzed
+  let insData = null;     // last scan result
+  let insBusy = false;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function fmtB(bytes) {
+    if (!bytes) return "0 B";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB";
+    return (bytes / 1073741824).toFixed(2) + " GB";
+  }
+
+  function fmtAge(ms) {
+    const days = Math.floor((Date.now() - ms) / 86400000);
+    if (days < 30) return days + "d ago";
+    if (days < 365) return Math.floor(days / 30) + "mo ago";
+    return (days / 365).toFixed(1) + "y ago";
+  }
+
+  function show(state) {
+    els.scanning.style.display = state === "scanning" ? "block" : "none";
+    els.report.style.display = state === "report" ? "block" : "none";
+    els.empty.style.display = state === "empty" ? "block" : "none";
+  }
+
+  function chip(label, value, accent) {
+    return `<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 12px;min-width:90px;">
+      <div style="font-size:15px;font-weight:600;color:${accent || "#ddd"};">${value}</div>
+      <div style="font-size:10px;color:#777;margin-top:2px;">${label}</div>
+    </div>`;
+  }
+
+  function fileRow(f, extra) {
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;" title="${esc(f.path)}">${esc(f.name)}</span>
+      <span style="color:#777;flex:none;">${extra}</span>
+      <button class="btn btn-ghost btn-sm ins-reveal" data-path="${esc(f.path)}" style="flex:none;font-size:9px;padding:1px 6px;" title="Show in folder">↗</button>
+    </div>`;
+  }
+
+  function render() {
+    const d = insData;
+    if (!d || !d.totals.files) {
+      els.empty.textContent = "This folder is empty (or unreadable). Pick another one.";
+      show("empty");
+      return;
+    }
+    els.subtitle.textContent = `${d.rootDir} — scanned just now, entirely on your device.` + (d.truncated ? " (large folder: first 20,000 files)" : "");
+
+    // Chips
+    const reclaimable = d.totals.duplicateWasteBytes;
+    els.chips.innerHTML =
+      chip("files", d.totals.files.toLocaleString()) +
+      chip("total size", fmtB(d.totals.bytes)) +
+      chip("reclaimable from duplicates", fmtB(reclaimable), reclaimable > 0 ? "#e8b955" : "#6fbf73") +
+      chip("untouched 6+ mo", `${d.totals.staleFiles.toLocaleString()} · ${fmtB(d.totals.staleBytes)}`);
+
+    // Duplicates
+    if (d.duplicates.length) {
+      const nCopies = d.duplicates.reduce((s, g) => s + g.remove.length, 0);
+      els.dupeSummary.innerHTML = `<strong>${d.totals.duplicateGroups}</strong> file${d.totals.duplicateGroups === 1 ? " exists" : "s exist"} in multiple places — <strong>${nCopies}</strong> redundant cop${nCopies === 1 ? "y" : "ies"} wasting <strong style="color:#e8b955;">${fmtB(reclaimable)}</strong>.`;
+      els.dupeList.innerHTML = d.duplicates.slice(0, 8).map((g) =>
+        `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:6px 10px;font-size:11.5px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;">
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;" title="${esc(g.keep.path)}">${esc(g.keep.name)}</span>
+            <span style="flex:none;color:#e8b955;">${g.remove.length + 1}× · wastes ${fmtB(g.wasteBytes)}</span>
+          </div>
+          <div style="font-size:10px;color:#666;margin-top:2px;">keeping newest: ${esc(g.keep.path)}</div>
+        </div>`).join("") +
+        (d.duplicates.length > 8 ? `<div style="font-size:10.5px;color:#666;">…and ${d.duplicates.length - 8} more groups</div>` : "");
+      els.archiveBtn.style.display = "inline-block";
+      els.archiveBtn.textContent = `Archive ${nCopies} duplicate${nCopies === 1 ? "" : "s"} — reclaim ${fmtB(reclaimable)}`;
+      els.archiveBtn.disabled = false;
+      els.dupeNote.style.display = "block";
+    } else {
+      els.dupeSummary.textContent = "No exact duplicates — nice and tidy.";
+      els.dupeList.innerHTML = "";
+      els.archiveBtn.style.display = "none";
+      els.dupeNote.style.display = "none";
+    }
+
+    // Categories
+    const maxBytes = d.categories[0]?.bytes || 1;
+    els.catList.innerHTML = d.categories.slice(0, 12).map((c) =>
+      `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;">
+        <span style="width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${esc(c.name)}</span>
+        <div style="flex:1;height:8px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${Math.max(2, Math.round((c.bytes / maxBytes) * 100))}%;background:var(--ds-cyan, #4fc3f7);opacity:.65;"></div>
+        </div>
+        <span style="width:120px;flex:none;text-align:right;color:#888;">${fmtB(c.bytes)} · ${c.files.toLocaleString()}</span>
+      </div>`).join("");
+
+    // Largest
+    els.largestList.innerHTML = d.largest.slice(0, 10).map((f) => fileRow(f, fmtB(f.size))).join("");
+
+    // Stale
+    els.staleSummary.textContent = d.totals.staleFiles
+      ? `${d.totals.staleFiles.toLocaleString()} files (${fmtB(d.totals.staleBytes)}) haven't been touched since ${new Date(Date.now() - 180 * 86400000).toLocaleDateString()}. Biggest ones first:`
+      : "Everything here has been used in the last 6 months.";
+    els.staleList.innerHTML = d.stale.slice(0, 10).map((f) => fileRow(f, `${fmtB(f.size)} · ${fmtAge(f.mtimeMs)}`)).join("");
+
+    show("report");
+  }
+
+  async function runScan() {
+    if (!insDir || insBusy) return;
+    insBusy = true;
+    show("scanning");
+    els.scanStatus.textContent = "Reading your folder…";
+    try {
+      insData = await window.api.insights.scan(insDir);
+      render();
+    } catch (err) {
+      els.empty.textContent = "Couldn't scan that folder: " + (err.message || err);
+      show("empty");
+    } finally {
+      insBusy = false;
+    }
+  }
+
+  window.api.insights.onProgress((p) => {
+    if (p.phase === "scanning") els.scanStatus.textContent = `Reading your folder… ${p.count.toLocaleString()} files`;
+    else if (p.phase === "hashing") els.scanStatus.textContent = `Comparing file contents for duplicates… ${p.done}/${p.total}`;
+  });
+
+  openBtn.addEventListener("click", async () => {
+    overlay.classList.remove("hidden");
+    if (!insDir) insDir = (typeof DEST_DIR !== "undefined" && DEST_DIR) ? DEST_DIR : null;
+    if (!insDir) {
+      const dir = await window.api.dialog.openFolder();
+      if (!dir) { overlay.classList.add("hidden"); return; }
+      insDir = dir;
+    }
+    runScan();
+  });
+
+  $("insFolderBtn")?.addEventListener("click", async () => {
+    const dir = await window.api.dialog.openFolder();
+    if (dir) { insDir = dir; runScan(); }
+  });
+  $("insRescanBtn")?.addEventListener("click", () => runScan());
+  $("insCloseBtn")?.addEventListener("click", () => overlay.classList.add("hidden"));
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.classList.add("hidden"); });
+
+  // Reveal buttons (delegated — list re-renders)
+  overlay.addEventListener("click", (e) => {
+    const btn = e.target.closest(".ins-reveal");
+    if (!btn) return;
+    const p = btn.getAttribute("data-path");
+    if (!p) return;
+    const parent = p.substring(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
+    window.api.shell.openPath(parent || p);
+  });
+
+  els.archiveBtn?.addEventListener("click", async () => {
+    if (!insData?.duplicates?.length || insBusy) return;
+    const nCopies = insData.duplicates.reduce((s, g) => s + g.remove.length, 0);
+    els.archiveBtn.disabled = true;
+    els.archiveBtn.textContent = "Archiving…";
+    try {
+      const result = await window.api.insights.archiveDuplicates(insData.rootDir, insData.duplicates);
+      const msg = `✅ Archived ${result.moved} duplicate${result.moved === 1 ? "" : "s"} to _Duplicates` +
+        (result.failed.length ? ` (${result.failed.length} skipped)` : "");
+      showToast(msg, 5000);
+      feedAdd(msg + " — Undo Log can put them all back in one click.");
+      if (typeof refreshTrialPill === "function") refreshTrialPill();
+      runScan(); // refresh the report
+    } catch (err) {
+      if (typeof isLicenseLockError === "function" && isLicenseLockError(err)) {
+        handleLicenseLock();
+        els.archiveBtn.textContent = `Archive ${nCopies} duplicates`;
+        els.archiveBtn.disabled = false;
+      } else {
+        showToast("Archive failed: " + (err.message || err), 5000);
+        els.archiveBtn.disabled = false;
+        els.archiveBtn.textContent = `Archive ${nCopies} duplicates`;
+      }
+    }
+  });
 })();

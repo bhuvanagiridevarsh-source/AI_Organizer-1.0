@@ -80,6 +80,30 @@ async function _tryLink(source, candidate) {
 }
 
 /**
+ * Filesystems (APFS, ext4, NTFS) cap a single NAME at 255 bytes. Appending
+ * a `_N` suffix to an already-max-length name would throw ENAMETOOLONG —
+ * and a naive organizer dies mid-run (EDGE_CASES.md #3). Truncate the BASE
+ * (never the extension, never the suffix) by whole code points so the final
+ * `base + suffix + ext` fits in 255 bytes.
+ */
+const MAX_NAME_BYTES = 255;
+
+function _fitName(base, suffix, ext) {
+  const budget = MAX_NAME_BYTES - Buffer.byteLength(suffix, "utf8") - Buffer.byteLength(ext, "utf8");
+  if (budget < 1) {
+    // Pathological: extension alone nearly fills 255 bytes. Refuse loudly
+    // rather than silently mangling the extension.
+    throw new Error(`Cannot fit filename within ${MAX_NAME_BYTES} bytes: suffix+extension too long (${suffix}${ext})`);
+  }
+  if (Buffer.byteLength(base, "utf8") <= budget) return `${base}${suffix}${ext}`;
+  const chars = Array.from(base); // whole code points — never split an emoji
+  while (chars.length > 1 && Buffer.byteLength(chars.join(""), "utf8") > budget) {
+    chars.pop();
+  }
+  return `${chars.join("")}${suffix}${ext}`;
+}
+
+/**
  * Reserve a destination path by *exclusively* creating an empty placeholder
  * file (O_EXCL). Returns the reserved path, or null if `desired` and the
  * first 10000 suffixes are all taken. The placeholder guarantees no other
@@ -101,9 +125,10 @@ async function _reserveUniquePath(desired) {
     }
   };
 
-  if (await attempt(desired)) return desired;
+  const first = path.join(dir, _fitName(base, "", ext));
+  if (await attempt(first)) return first;
   for (let counter = 1; counter < 10000; counter++) {
-    const candidate = path.join(dir, `${base}_${counter}${ext}`);
+    const candidate = path.join(dir, _fitName(base, `_${counter}`, ext));
     if (await attempt(candidate)) return candidate;
   }
   throw new Error(`Cannot find unique name for ${desired} after 10000 attempts`);
@@ -329,4 +354,4 @@ async function scanUserFolders(targetDir) {
   }
 }
 
-module.exports = { safeMoveFile, resolveUniquePath, scanUserFolders };
+module.exports = { safeMoveFile, resolveUniquePath, scanUserFolders, _fitName };
