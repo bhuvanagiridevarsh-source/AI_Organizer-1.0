@@ -36,6 +36,30 @@ const SKIP_DIRS = new Set([
 ]);
 
 const DUPLICATES_DIR = "_Duplicates"; // never re-scan our own archive
+const SCREENSHOTS_DIR = "Screenshots"; // sweep destination
+
+// ── Screenshot detection ───────────────────────────────────────────────
+// Filename conventions across macOS, Windows, and popular tools. Extension
+// must be an image type — "Screenshot notes.docx" is not a screenshot.
+const SCREENSHOT_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".tiff", ".bmp"]);
+const SCREENSHOT_PATTERNS = [
+  /^screen\s?shot\b/i,        // macOS "Screen Shot 2026-03-01 at…" / "Screenshot"
+  /^screenshot[\s_\-(]/i,     // Windows "Screenshot (12)", Android "Screenshot_2026…"
+  /^screenshot\.\w+$/i,       // bare "screenshot.png"
+  /^cleanshot/i,              // CleanShot X
+  /^capture[\s_\-]?\d/i,      // Capture 1, capture_2026
+  /^snip\b|^snippet\b/i,      // Snipping tool exports
+  /^greenshot/i,              // Greenshot
+  /^annotation\s/i,           // macOS markup exports
+  /^scr[\s_\-]\d/i,           // SCR_20260301
+  /^vlcsnap/i,                // VLC snapshots
+];
+
+function isScreenshot(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  if (!SCREENSHOT_EXTS.has(ext)) return false;
+  return SCREENSHOT_PATTERNS.some((re) => re.test(filename));
+}
 
 /**
  * Walk rootDir (bounded), returning flat file records.
@@ -171,6 +195,14 @@ async function scanInsights(rootDir, onProgress) {
   const totalBytes = files.reduce((s, f) => s + f.size, 0);
   const duplicateWaste = dupGroups.reduce((s, g) => s + g.wasteBytes, 0);
 
+  // ── Screenshots (skip ones already living in Screenshots/) ────────
+  const screenshotsAll = files.filter((f) => f.category !== SCREENSHOTS_DIR && isScreenshot(f.name));
+  const screenshotBytes = screenshotsAll.reduce((s, f) => s + f.size, 0);
+  const screenshots = screenshotsAll
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, 500)
+    .map((f) => ({ path: f.path, name: f.name, size: f.size, mtimeMs: f.mtimeMs, category: f.category }));
+
   return {
     rootDir,
     scannedAt: Date.now(),
@@ -182,12 +214,40 @@ async function scanInsights(rootDir, onProgress) {
       duplicateWasteBytes: duplicateWaste,
       staleFiles: staleAll.length,
       staleBytes,
+      screenshots: screenshotsAll.length,
+      screenshotBytes,
     },
     categories,
     largest,
     stale,
     duplicates: dupGroups.slice(0, 100), // UI cap; waste total covers all
+    screenshots,
   };
+}
+
+/**
+ * Sweep screenshots into rootDir/Screenshots/YYYY-MM (by capture date —
+ * filename date first, mtime fallback). Moves via safeMoveFile; caller
+ * records the undo op.
+ */
+async function sweepScreenshots(rootDir, shots, logUndo) {
+  const { extractDocumentDate, chronoSubfolder } = require("./DateExtractService");
+  let moved = 0;
+  const failed = [];
+
+  for (const shot of shots || []) {
+    try {
+      const d = extractDocumentDate(shot.name, "") ||
+        (() => { const t = new Date(shot.mtimeMs || Date.now()); return { year: t.getFullYear(), month: t.getMonth() + 1 }; })();
+      const destDir = path.join(rootDir, SCREENSHOTS_DIR, chronoSubfolder(d, "year-month"));
+      const finalDest = await safeMoveFile(shot.path, path.join(destDir, shot.name));
+      if (logUndo) await logUndo(shot.path, finalDest);
+      moved += 1;
+    } catch (err) {
+      failed.push({ path: shot.path, error: String(err?.message || err) });
+    }
+  }
+  return { moved, failed, destRoot: path.join(rootDir, SCREENSHOTS_DIR) };
 }
 
 /**
@@ -229,4 +289,4 @@ async function archiveDuplicates(rootDir, groups, logUndo) {
   return { moved, failed, archiveDir };
 }
 
-module.exports = { scanInsights, archiveDuplicates, STALE_DAYS, DUPLICATES_DIR };
+module.exports = { scanInsights, archiveDuplicates, sweepScreenshots, isScreenshot, STALE_DAYS, DUPLICATES_DIR, SCREENSHOTS_DIR };

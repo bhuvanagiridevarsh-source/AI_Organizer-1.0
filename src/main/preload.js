@@ -6,7 +6,7 @@
  * file moves, licensing).
  */
 
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
   // ── App ────────────────────────────────────────────
@@ -85,7 +85,47 @@ contextBridge.exposeInMainWorld("api", {
   insights: {
     scan: (rootDir) => ipcRenderer.invoke("insights:scan", rootDir),
     archiveDuplicates: (rootDir, groups) => ipcRenderer.invoke("insights:archive-duplicates", rootDir, groups),
+    sweepScreenshots: (rootDir, shots) => ipcRenderer.invoke("insights:sweep-screenshots", rootDir, shots),
     onProgress: (callback) => ipcRenderer.on("insights:progress", (_e, data) => callback(data)),
+  },
+
+  // ── v1.1 features ─────────────────────────────────────
+  features: {
+    getSettings: () => ipcRenderer.invoke("features:get-settings"),
+    setSettings: (patch) => ipcRenderer.invoke("features:set-settings", patch),
+  },
+  schedule: {
+    runNow: () => ipcRenderer.invoke("schedule:run-now"),
+    onDone: (callback) => ipcRenderer.on("quietclean:done", (_e, data) => callback(data)),
+  },
+  renewals: {
+    get: () => ipcRenderer.invoke("renewals:get"),
+    rebuild: () => ipcRenderer.invoke("renewals:rebuild"),
+  },
+  rename: {
+    batchSuggest: (dirPath) => ipcRenderer.invoke("rename:batch-suggest", dirPath),
+    batchApply: (renames) => ipcRenderer.invoke("rename:batch-apply", renames),
+    onProgress: (callback) => ipcRenderer.on("rename:progress", (_e, data) => callback(data)),
+  },
+  collections: {
+    list: () => ipcRenderer.invoke("collections:list"),
+    save: (col) => ipcRenderer.invoke("collections:save", col),
+    remove: (id) => ipcRenderer.invoke("collections:delete", id),
+    run: (id) => ipcRenderer.invoke("collections:run", id),
+  },
+  palette: {
+    search: (query) => ipcRenderer.invoke("search:palette", query),
+  },
+  vault: {
+    available: () => ipcRenderer.invoke("vault:available"),
+    list: () => ipcRenderer.invoke("vault:list"),
+    add: (paths) => ipcRenderer.invoke("vault:add", paths),
+    restore: (id) => ipcRenderer.invoke("vault:restore", id),
+  },
+  quickdrop: {
+    drop: (paths) => ipcRenderer.invoke("quickdrop:drop", paths),
+    hide: () => ipcRenderer.invoke("quickdrop:hide"),
+    pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return null; } },
   },
 
   // ── Classification ───────────────────────────────────

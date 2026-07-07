@@ -3343,6 +3343,7 @@ html.show-kanji .footer-kanji { display: block; }
       <button id="newCategoryBtn">+ New Category</button>
       <button id="scanBtn">Scan Now</button>
       <button id="insightsBtn">Insights</button>
+      <button id="smartRenameBtn">Smart Rename</button>
       <button id="refreshFpBtn">Refresh</button>
       <button id="cleanPoolBtn">Clean Pool</button>
       <button id="clearLearningBtn">Clear Learning</button>
@@ -3375,7 +3376,7 @@ html.show-kanji .footer-kanji { display: block; }
     </button>
 
     <!-- Ask AI (maps to chatBtn) -->
-    <button class="topbar-ask" id="chatBtn" title="Ask AI about your files (⌘K)" aria-label="Open AI chat">
+    <button class="topbar-ask" id="chatBtn" title="Ask AI about your files (⌘⇧K)" aria-label="Open AI chat">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--seal)">
         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
       </svg>
@@ -3429,6 +3430,9 @@ html.show-kanji .footer-kanji { display: block; }
         </button>
         <button class="rail-item" data-proxy="insightsBtn">
           <div class="rail-dot"></div><span>insights</span>
+        </button>
+        <button class="rail-item" data-proxy="smartRenameBtn">
+          <div class="rail-dot"></div><span>smart rename</span>
         </button>
       </div>
 
@@ -3708,6 +3712,47 @@ html.show-kanji .footer-kanji { display: block; }
         </div>
         <div id="licenseActivateStatus" style="font-size:11px;margin-top:6px;min-height:16px;"></div>
         <button class="btn btn-ghost btn-sm" id="deactivateLicenseBtn" style="margin-top:6px;display:none;font-size:10px;color:#888;">Remove license</button>
+      </div>
+
+      <!-- ── Quiet clean schedule ─────────────────────────────────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">Quiet clean — tidy on a schedule</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:#bbb;">
+          <label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" id="schedEnabled"> On</label>
+          <select id="schedFrequency" style="background:#1a1a1a;color:#ddd;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 6px;font-size:11px;">
+            <option value="daily">Every day</option>
+            <option value="weekly">Weekly (Sunday)</option>
+          </select>
+          <span>at</span>
+          <select id="schedHour" style="background:#1a1a1a;color:#ddd;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 6px;font-size:11px;"></select>
+          <button class="btn btn-ghost btn-sm" id="schedRunNowBtn" style="font-size:10px;">Run now</button>
+        </div>
+        <div id="schedStatus" style="font-size:10.5px;color:#666;margin-top:6px;">Files anything sitting loose in your folder into the right category, then tells you what it did.</div>
+      </div>
+
+      <!-- ── Chronological filing ─────────────────────────────────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">File by date</div>
+        <div style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:#bbb;">
+          <select id="chronoSelect" style="background:#1a1a1a;color:#ddd;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 6px;font-size:11px;">
+            <option value="off">Off — category folders only</option>
+            <option value="year">Category / 2026</option>
+            <option value="year-month">Category / 2026-03</option>
+          </select>
+        </div>
+        <div style="font-size:10.5px;color:#666;margin-top:6px;">Reads the document's own date (from its name or contents) — falls back to the file's modified date. Applies to auto-sort, quiet clean, and quick drop.</div>
+      </div>
+
+      <!-- ── Vault ────────────────────────────────────────────────── -->
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.07)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:6px;">Vault — encrypted local folder</div>
+        <div id="vaultStatusRow" style="font-size:11px;color:#aaa;margin-bottom:8px;line-height:1.5;">Checking…</div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-primary btn-sm" id="vaultAddBtn">Add files to Vault…</button>
+          <button class="btn btn-ghost btn-sm" id="vaultRefreshBtn" style="font-size:10px;">↻</button>
+        </div>
+        <div id="vaultList" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;"></div>
+        <div style="font-size:10.5px;color:#666;margin-top:6px;">AES-256 encrypted, key held by your OS keychain. Files are unreadable outside this app on this machine. Restore any time.</div>
       </div>
 
       <!-- ── Send feedback (testers) ──────────────────────────────── -->
@@ -4554,6 +4599,21 @@ html.show-kanji .footer-kanji { display: block; }
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Largest files</div>
         <div id="insLargestList" style="display:flex;flex-direction:column;gap:4px;"></div>
 
+        <!-- Screenshots -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Screenshots</div>
+        <div id="insShotSummary" style="font-size:12px;color:#bbb;margin-bottom:6px;"></div>
+        <button class="btn btn-primary btn-sm" id="insSweepShotsBtn" style="display:none;">Sweep into Screenshots/</button>
+        <div id="insShotNote" style="font-size:10.5px;color:#666;margin-top:6px;display:none;">
+          Files them into <code>Screenshots/2026-07/</code> by capture month. Undoable in one click.
+        </div>
+
+        <!-- Renewal radar -->
+        <div style="display:flex;align-items:center;gap:8px;margin:18px 0 6px;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;">Coming up — dates found in your documents</span>
+          <button class="btn btn-ghost btn-sm" id="insRadarRefreshBtn" style="font-size:9px;padding:1px 6px;">↻</button>
+        </div>
+        <div id="insRadarList" style="display:flex;flex-direction:column;gap:5px;"></div>
+
         <!-- Stale files -->
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin:18px 0 6px;">Untouched for 6+ months</div>
         <div id="insStaleSummary" style="font-size:12px;color:#bbb;margin-bottom:6px;"></div>
@@ -4562,6 +4622,48 @@ html.show-kanji .footer-kanji { display: block; }
 
       <!-- Empty / error state -->
       <div id="insEmpty" style="display:none;text-align:center;padding:24px 0;font-size:12px;color:#888;"></div>
+    </div>
+  </div>
+
+  <!-- ⌘K Search palette + collections -->
+  <div class="settings-overlay hidden" id="paletteOverlay" role="dialog" aria-modal="true" aria-label="Search your files">
+    <div class="settings-panel" style="max-width:560px;padding:14px;">
+      <input type="text" id="paletteInput" placeholder="Search your organized files — try “tax form from March”"
+        style="width:100%;box-sizing:border-box;background:#1a1a1a;color:#eee;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 12px;font-size:13.5px;font-family:inherit;outline:none;" />
+      <div id="paletteCollections" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;"></div>
+      <div id="paletteResults" style="display:flex;flex-direction:column;gap:2px;margin-top:10px;max-height:46vh;overflow-y:auto;"></div>
+      <div id="paletteFooter" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:10px;color:#666;">
+        <span>↵ open · hover for reveal · esc to close</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" id="paletteSaveColBtn" style="font-size:10px;display:none;">☆ Save as collection</button>
+          <button class="btn btn-ghost btn-sm" id="paletteAskBtn" style="font-size:10px;">Ask AI instead →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Rename (content-aware batch rename) -->
+  <div class="settings-overlay hidden" id="renameOverlay" role="dialog" aria-modal="true" aria-label="Smart rename">
+    <div class="settings-panel" style="max-width:640px;max-height:82vh;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h2 style="margin:0;">Smart Rename</h2>
+        <button class="btn btn-ghost btn-sm" id="rnCloseBtn">✕</button>
+      </div>
+      <p style="font-size:11.5px;color:#888;margin:4px 0 12px;">
+        Reads each file's contents locally and suggests a real name — <code>scan0001.pdf</code> becomes <code>2026-03_Comcast_Bill.pdf</code>. Nothing is renamed until you approve.
+      </p>
+      <div id="rnPickState" style="text-align:center;padding:20px 0;">
+        <button class="btn btn-primary" id="rnPickFolderBtn">Choose a folder to rename</button>
+      </div>
+      <div id="rnProgress" style="display:none;text-align:center;padding:16px 0;font-size:12px;color:#aaa;"></div>
+      <div id="rnResults" style="display:none;">
+        <div id="rnList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+          <span id="rnCount" style="font-size:11px;color:#888;"></span>
+          <button class="btn btn-primary btn-sm" id="rnApplyBtn">Rename selected</button>
+        </div>
+        <p style="font-size:10.5px;color:#666;margin-top:8px;">One click in the Undo Log restores every original name.</p>
+      </div>
     </div>
   </div>
 

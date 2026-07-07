@@ -119,3 +119,49 @@ test("archiveDuplicates skips a group whose keeper vanished (safety check)", asy
   // The would-be-archived copy is still where it was
   assert.ok(fs.existsSync(report.duplicates[0].remove[0].path));
 });
+
+// ── Screenshot sweeper ──────────────────────────────────────────────────
+
+const { sweepScreenshots, isScreenshot, SCREENSHOTS_DIR } =
+  require("../src/main/services/InsightsService");
+
+test("isScreenshot: catches real conventions, ignores lookalikes", () => {
+  for (const yes of [
+    "Screen Shot 2026-03-01 at 9.14.02 AM.png",
+    "Screenshot (44).png",
+    "Screenshot_20260301_091402.jpg",
+    "screenshot.png",
+    "CleanShot 2026-03-01 at 09.14.02.png",
+    "SCR_20260301.png",
+  ]) assert.equal(isScreenshot(yes), true, yes);
+
+  for (const no of [
+    "Screenshot notes.docx",       // not an image
+    "my screenshot collage.png",   // pattern is not at start
+    "beach.png",
+    "screenplay_draft.png",
+  ]) assert.equal(isScreenshot(no), false, no);
+});
+
+test("sweepScreenshots files by capture month, undo-logged, nothing lost", async () => {
+  const dir = makeTmpDir();
+  fs.writeFileSync(path.join(dir, "Screenshot 2026-03-01 at 9.00.00 AM.png"), "SHOT-A");
+  fs.writeFileSync(path.join(dir, "Screenshot (2).png"), "SHOT-B"); // no date in name → mtime
+  fs.writeFileSync(path.join(dir, "beach.png"), "NOT-A-SHOT");
+
+  const report = await scanInsights(dir);
+  assert.equal(report.totals.screenshots, 2);
+
+  const undo = [];
+  const result = await sweepScreenshots(dir, report.screenshots, async (f, t) => undo.push([f, t]));
+  assert.equal(result.moved, 2);
+  assert.equal(undo.length, 2);
+
+  // Dated one landed in 2026-03; both contents survive somewhere under Screenshots/
+  assert.ok(fs.existsSync(path.join(dir, SCREENSHOTS_DIR, "2026-03", "Screenshot 2026-03-01 at 9.00.00 AM.png")));
+  assert.ok(fs.existsSync(path.join(dir, "beach.png")), "non-screenshot untouched");
+
+  // Re-scan: swept screenshots no longer counted (they live in Screenshots/ now)
+  const after = await scanInsights(dir);
+  assert.equal(after.totals.screenshots, 0);
+});

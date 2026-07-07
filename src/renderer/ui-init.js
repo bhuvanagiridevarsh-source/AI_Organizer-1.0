@@ -77,15 +77,21 @@ document.addEventListener('DOMContentLoaded', () => {
     obs.observe(statusDotEl, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // ── ⌘K / Ctrl+K → open AI chat ───────────────────────────────────────────
+  // ── ⌘K / Ctrl+K → search palette · ⌘⇧K → AI chat ────────────────────────
   document.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      const chatBtn = document.getElementById('chatBtn');
-      if (chatBtn) chatBtn.click();
-      else {
-        const inp = document.getElementById('deepSearchInput');
-        if (inp) inp.focus();
+      if (e.shiftKey) {
+        const chatBtn = document.getElementById('chatBtn');
+        if (chatBtn) chatBtn.click();
+        return;
+      }
+      if (typeof window.openSearchPalette === 'function') {
+        window.openSearchPalette();
+      } else {
+        // Palette unavailable (old build) — fall back to chat
+        const chatBtn = document.getElementById('chatBtn');
+        if (chatBtn) chatBtn.click();
       }
     }
   });

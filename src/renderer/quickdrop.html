@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: rgba(18, 18, 22, 0.96);
+    color: #ddd;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    -webkit-app-region: drag; /* draggable window */
+  }
+  .bar b { font-size: 11px; letter-spacing: .04em; color: #aaa; }
+  .bar button {
+    -webkit-app-region: no-drag;
+    background: none; border: none; color: #777; font-size: 13px; cursor: pointer;
+  }
+  #zone {
+    margin: 0 12px 12px; height: 118px;
+    border: 1.5px dashed rgba(255, 255, 255, 0.2); border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; text-align: center; padding: 8px; transition: all .15s;
+  }
+  #zone.over { border-color: #4fc3f7; background: rgba(79, 195, 247, 0.08); }
+  #zone .big { font-size: 22px; }
+  #msg { font-size: 11px; color: #999; line-height: 1.5; }
+  .ok { color: #6fbf73; }
+  .err { color: #e57373; }
+</style>
+</head>
+<body>
+  <div class="bar"><b>QUICK DROP</b><button id="closeBtn" title="Hide">✕</button></div>
+  <div id="zone">
+    <div class="big">🧹</div>
+    <div id="msg">Drop files here —<br>they'll be filed into the right folder.</div>
+  </div>
+<script>
+  const zone = document.getElementById("zone");
+  const msg = document.getElementById("msg");
+  const idle = () => { msg.innerHTML = "Drop files here —<br>they'll be filed into the right folder."; msg.className = ""; };
+
+  document.getElementById("closeBtn").addEventListener("click", () => window.api.quickdrop.hide());
+
+  ["dragover", "dragenter"].forEach((ev) =>
+    zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("over"); }));
+  ["dragleave", "dragend"].forEach((ev) =>
+    zone.addEventListener(ev, () => zone.classList.remove("over")));
+
+  zone.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    zone.classList.remove("over");
+    const paths = [...(e.dataTransfer?.files || [])]
+      .map((f) => window.api.quickdrop.pathForFile(f))
+      .filter(Boolean);
+    if (!paths.length) { msg.textContent = "Couldn't read those files."; msg.className = "err"; setTimeout(idle, 2500); return; }
+
+    msg.textContent = `Filing ${paths.length} file${paths.length === 1 ? "" : "s"}…`;
+    msg.className = "";
+    try {
+      const results = await window.api.quickdrop.drop(paths);
+      const ok = results.filter((r) => r.ok);
+      const locked = results.some((r) => r.error === "LICENSE_LOCKED");
+      if (locked && !ok.length) {
+        msg.textContent = "Free trial finished — open the app to activate a license.";
+        msg.className = "err";
+      } else if (ok.length === results.length) {
+        const cats = [...new Set(ok.map((r) => r.category))];
+        msg.innerHTML = `✓ Filed ${ok.length} → ${cats.slice(0, 2).join(", ")}${cats.length > 2 ? "…" : ""}`;
+        msg.className = "ok";
+      } else {
+        msg.textContent = `Filed ${ok.length} of ${results.length} — the rest stayed put.`;
+        msg.className = ok.length ? "ok" : "err";
+      }
+    } catch (err) {
+      msg.textContent = "Error: " + (err.message || err);
+      msg.className = "err";
+    }
+    setTimeout(idle, 4000);
+  });
+</script>
+</body>
+</html>

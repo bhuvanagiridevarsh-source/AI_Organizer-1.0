@@ -3339,3 +3339,414 @@ ipcMain.handle("scan-cache:invalidate", async (_e, folderPath) => {
 ipcMain.handle("ai:status", () => {
   return getAIStatus();
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// v1.1 FEATURE PACK — quiet clean scheduler, renewal radar, batch rename,
+// screenshot sweep, collections, vault, search palette, tray quick-drop.
+// Everything below is additive; no existing handler is modified.
+// ═══════════════════════════════════════════════════════════════════════
+
+const featureStore = new Store({ name: "features" });
+const fsPromises = fs.promises;
+const SchedulerService = require("./services/SchedulerService");
+const RenewalService = require("./services/RenewalService");
+const DateExtract = require("./services/DateExtractService");
+
+// ── Shared: chronological filing helper ────────────────────────────────
+// Setting: chronoFiling = "off" | "year" | "year-month"
+function chronoSubpath(filename, text, mtimeMs) {
+  const mode = featureStore.get("chronoFiling", "off");
+  if (mode === "off") return "";
+  let d = DateExtract.extractDocumentDate(filename, text || "");
+  if (!d && mtimeMs) {
+    const t = new Date(mtimeMs);
+    d = { year: t.getFullYear(), month: t.getMonth() + 1 };
+  }
+  return d ? DateExtract.chronoSubfolder(d, mode === "year-month" ? "year-month" : "year") : "";
+}
+
+ipcMain.handle("features:get-settings", () => ({
+  chronoFiling: featureStore.get("chronoFiling", "off"),
+  schedule: { ...SchedulerService.DEFAULTS, ...featureStore.get("schedule", {}) },
+}));
+
+ipcMain.handle("features:set-settings", (_e, patch) => {
+  if (patch && typeof patch.chronoFiling === "string") {
+    featureStore.set("chronoFiling", ["off", "year", "year-month"].includes(patch.chronoFiling) ? patch.chronoFiling : "off");
+  }
+  if (patch && patch.schedule && typeof patch.schedule === "object") {
+    const cur = { ...SchedulerService.DEFAULTS, ...featureStore.get("schedule", {}) };
+    const next = { ...cur, ...patch.schedule };
+    next.hour = Math.min(23, Math.max(0, parseInt(next.hour, 10) || 0));
+    next.frequency = next.frequency === "weekly" ? "weekly" : "daily";
+    next.enabled = !!next.enabled;
+    featureStore.set("schedule", next);
+  }
+  return { ok: true };
+});
+
+// ── Quiet clean: file whatever is loose in the base dir root ───────────
+async function runQuietClean() {
+  const summary = { moved: 0, skipped: 0, errors: 0 };
+  if (!license.canOrganizeFiles()) {
+    console.log("[QuietClean] Skipped — locked (trial exhausted, no license)");
+    return summary;
+  }
+  const baseDir = currentBaseDir;
+  let entries = [];
+  try {
+    entries = await fsPromises.readdir(baseDir, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`[QuietClean] Cannot read ${baseDir}: ${err.message}`);
+    return summary;
+  }
+
+  const SKIP = new Set(["_duplicates", "_vault", "needs review"]);
+  const loose = entries.filter((e) => e.isFile() && !e.name.startsWith(".") && !SKIP.has(e.name.toLowerCase()));
+  if (!loose.length) return summary;
+
+  const folders = await scanUserFolders(baseDir);
+  for (const entry of loose.slice(0, 200)) {
+    if (!license.canOrganizeFiles()) break; // trial may run out mid-batch
+    const filePath = path.join(baseDir, entry.name);
+    try {
+      const result = await classifyFile(filePath, baseDir, folders);
+      const confidence = result?.confidence || 0;
+      if (!result?.category || confidence < 70) { summary.skipped++; continue; }
+
+      let st = null;
+      try { st = await fsPromises.stat(filePath); } catch {}
+      const chrono = chronoSubpath(entry.name, "", st?.mtimeMs);
+      const dest = path.join(baseDir, result.category, chrono, entry.name);
+      const finalDest = await safeMoveFile(filePath, dest);
+      license.consumeTrialMoves(1);
+      await logMoveForUndo("quiet-clean", filePath, finalDest, result.category);
+      try {
+        const text = await extractText(finalDest);
+        indexFile(finalDest, result.category, text || "");
+      } catch { /* non-fatal */ }
+      summary.moved++;
+    } catch (err) {
+      summary.errors++;
+      console.warn(`[QuietClean] ${entry.name}: ${err.message}`);
+    }
+  }
+  return summary;
+}
+
+ipcMain.handle("schedule:run-now", async () => {
+  const summary = await runQuietClean();
+  await rebuildRenewalRadar().catch(() => {});
+  return summary;
+});
+
+function notifyQuietClean(summary) {
+  try {
+    const { Notification } = require("electron");
+    if (!Notification.isSupported()) return;
+    const radar = RenewalService.loadRadar(app.getPath("userData"));
+    const soon = RenewalService.upcoming(radar.items, 30);
+    let body = summary.moved
+      ? `Filed ${summary.moved} file${summary.moved === 1 ? "" : "s"} while you were away.`
+      : "Nothing needed filing — already tidy.";
+    if (soon.length) body += ` Heads up: ${soon.length} renewal${soon.length === 1 ? "" : "s"} in the next 30 days.`;
+    new Notification({ title: "System Janitor — quiet clean", body, silent: true }).show();
+  } catch { /* notifications unavailable */ }
+  mainWindow?.webContents.send("quietclean:done", summary);
+}
+
+// ── Renewal Radar ───────────────────────────────────────────────────────
+async function rebuildRenewalRadar() {
+  const entries = getAllEntries();
+  const items = RenewalService.buildRadar(entries);
+  RenewalService.saveRadar(app.getPath("userData"), items);
+  return { builtAt: Date.now(), items };
+}
+
+ipcMain.handle("renewals:get", () => RenewalService.loadRadar(app.getPath("userData")));
+ipcMain.handle("renewals:rebuild", async () => rebuildRenewalRadar());
+
+// ── Batch rename (content-aware) ────────────────────────────────────────
+ipcMain.handle("rename:batch-suggest", async (event, dirPath) => {
+  const { suggestRename } = require("./services/RenameService");
+  const MAX = 40;
+  let entries;
+  try {
+    entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
+  } catch (err) {
+    throw new Error(`Cannot read folder: ${err.message}`);
+  }
+  const files = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).slice(0, MAX);
+  const suggestions = [];
+  let done = 0;
+  for (const f of files) {
+    const p = path.join(dirPath, f.name);
+    let text = "";
+    try { text = (await extractText(p)) || ""; } catch { /* unreadable → filename-only */ }
+    try {
+      const s = await suggestRename(p, text);
+      suggestions.push(s);
+    } catch (err) {
+      suggestions.push({ originalPath: p, originalName: f.name, suggestedName: f.name, confidence: "low", reasoning: `Skipped: ${err.message}` });
+    }
+    done++;
+    try { event.sender.send("rename:progress", { done, total: files.length, current: f.name }); } catch {}
+  }
+  return { dirPath, suggestions, truncated: entries.filter((e) => e.isFile()).length > MAX };
+});
+
+ipcMain.handle("rename:batch-apply", async (_e, renames) => {
+  if (!license.canOrganizeFiles()) {
+    throw new Error("LICENSE_LOCKED: Free trial used up — activate a license to keep organizing");
+  }
+  const undoMoves = [];
+  let applied = 0;
+  const failed = [];
+  for (const r of renames || []) {
+    try {
+      if (!r?.originalPath || !r?.newName) continue;
+      const dir = path.dirname(r.originalPath);
+      // safeMoveFile within the same dir = crash-safe rename that suffixes on collision
+      const finalDest = await safeMoveFile(r.originalPath, path.join(dir, r.newName));
+      license.consumeTrialMoves(1);
+      undoMoves.push({
+        fileName: path.basename(finalDest),
+        fromPath: r.originalPath,
+        toPath: finalDest,
+        movedAt: new Date().toISOString(),
+        reason: "smart-rename",
+      });
+      applied++;
+    } catch (err) {
+      failed.push({ path: r?.originalPath, error: String(err?.message || err) });
+    }
+  }
+  if (undoMoves.length) {
+    try { await undoLogRecord("smart-rename", undoMoves, `Renamed ${undoMoves.length} file${undoMoves.length === 1 ? "" : "s"} by content`); }
+    catch (err) { console.warn(`[BatchRename] undo record failed: ${err.message}`); }
+  }
+  return { applied, failed };
+});
+
+// ── Screenshot sweep ────────────────────────────────────────────────────
+ipcMain.handle("insights:sweep-screenshots", async (_e, rootDir, shots) => {
+  if (!license.canOrganizeFiles()) {
+    throw new Error("LICENSE_LOCKED: Free trial used up — activate a license to keep organizing");
+  }
+  const { sweepScreenshots } = require("./services/InsightsService");
+  const undoMoves = [];
+  const result = await sweepScreenshots(rootDir, shots, async (fromPath, toPath) => {
+    undoMoves.push({ fileName: path.basename(toPath), fromPath, toPath, movedAt: new Date().toISOString(), reason: "screenshot" });
+  });
+  license.consumeTrialMoves(result.moved);
+  if (undoMoves.length) {
+    try { await undoLogRecord("screenshots", undoMoves, `Swept ${undoMoves.length} screenshot${undoMoves.length === 1 ? "" : "s"} → Screenshots/`); }
+    catch (err) { console.warn(`[Screenshots] undo record failed: ${err.message}`); }
+  }
+  return result;
+});
+
+// ── Smart Collections (saved searches over the organized library) ──────
+const DEFAULT_COLLECTIONS = [
+  { id: "invoices", name: "Invoices", query: "invoice bill amount due" },
+  { id: "receipts", name: "Receipts", query: "receipt purchase order total paid" },
+  { id: "contracts", name: "Contracts", query: "contract agreement terms signed party" },
+  { id: "tax", name: "Tax documents", query: "tax irs w2 1099 deduction return" },
+];
+
+function loadCollections() {
+  const saved = featureStore.get("collections", null);
+  return Array.isArray(saved) && saved.length ? saved : DEFAULT_COLLECTIONS;
+}
+
+ipcMain.handle("collections:list", () => loadCollections());
+
+ipcMain.handle("collections:save", (_e, col) => {
+  if (!col?.name || !col?.query) throw new Error("Collection needs a name and a query");
+  const list = loadCollections();
+  const id = col.id || `c_${Date.now().toString(36)}`;
+  const idx = list.findIndex((c) => c.id === id);
+  const entry = { id, name: String(col.name).slice(0, 40), query: String(col.query).slice(0, 200) };
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  featureStore.set("collections", list);
+  return list;
+});
+
+ipcMain.handle("collections:delete", (_e, id) => {
+  const list = loadCollections().filter((c) => c.id !== id);
+  featureStore.set("collections", list);
+  return list;
+});
+
+ipcMain.handle("collections:run", async (_e, id) => {
+  const col = loadCollections().find((c) => c.id === id);
+  if (!col) return { collection: null, results: [] };
+  let results;
+  try { results = await searchFilesHybrid(col.query, 30); }
+  catch { results = searchFiles(col.query, 30); }
+  return { collection: col, results };
+});
+
+// ── Search palette (⌘K) ─────────────────────────────────────────────────
+ipcMain.handle("search:palette", async (_e, query) => {
+  const q = String(query || "").trim();
+  if (q.length < 2) return [];
+  try { return await searchFilesHybrid(q, 12); }
+  catch { return searchFiles(q, 12); }
+});
+
+// ── Vault (encrypted local folder for sensitive files) ─────────────────
+const VaultService = require("./services/VaultService");
+
+function _vaultKey() {
+  return VaultService.getVaultKey(app.getPath("userData"));
+}
+
+ipcMain.handle("vault:available", () => !!_vaultKey());
+
+ipcMain.handle("vault:list", async () => {
+  const key = _vaultKey();
+  if (!key) throw new Error("Vault unavailable — OS keychain not accessible");
+  return VaultService.listVault(currentBaseDir, key);
+});
+
+// NOT license-gated: locking away sensitive files is a safety action,
+// same policy as pii:secure-move.
+ipcMain.handle("vault:add", async (_e, filePaths) => {
+  const key = _vaultKey();
+  if (!key) throw new Error("Vault unavailable — OS keychain not accessible");
+  const added = [];
+  const failed = [];
+  for (const p of (filePaths || []).slice(0, 100)) {
+    try { added.push(await VaultService.vaultFile(p, currentBaseDir, key)); }
+    catch (err) { failed.push({ path: p, error: String(err?.message || err) }); }
+  }
+  return { added, failed };
+});
+
+ipcMain.handle("vault:restore", async (_e, id) => {
+  const key = _vaultKey();
+  if (!key) throw new Error("Vault unavailable — OS keychain not accessible");
+  return VaultService.restoreFile(id, currentBaseDir, key);
+});
+
+// ── Quick-drop: classify + file a set of dropped paths ──────────────────
+async function quickDropFiles(paths) {
+  const out = [];
+  for (const p of (paths || []).slice(0, 50)) {
+    if (!license.canOrganizeFiles()) { out.push({ path: p, ok: false, error: "LICENSE_LOCKED" }); continue; }
+    try {
+      const st = await fsPromises.lstat(p);
+      if (!st.isFile()) { out.push({ path: p, ok: false, error: "Not a file" }); continue; }
+      const folders = await scanUserFolders(currentBaseDir);
+      const result = await classifyFile(p, currentBaseDir, folders);
+      const category = result?.category || "Needs Review";
+      const chrono = chronoSubpath(path.basename(p), "", st.mtimeMs);
+      const dest = path.join(currentBaseDir, category, chrono, path.basename(p));
+      const finalDest = await safeMoveFile(p, dest);
+      license.consumeTrialMoves(1);
+      await logMoveForUndo("quick-drop", p, finalDest, category);
+      try {
+        const text = await extractText(finalDest);
+        indexFile(finalDest, category, text || "");
+      } catch {}
+      out.push({ path: p, ok: true, category, dest: finalDest });
+    } catch (err) {
+      out.push({ path: p, ok: false, error: String(err?.message || err) });
+    }
+  }
+  return out;
+}
+
+ipcMain.handle("quickdrop:drop", async (_e, paths) => quickDropFiles(paths));
+ipcMain.handle("quickdrop:hide", () => { _quickDropWindow?.hide(); return true; });
+
+// ── Tray + quick-drop window ────────────────────────────────────────────
+let _tray = null;
+let _quickDropWindow = null;
+
+const TRAY_ICON_16 = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMElEQVR4nGNgGIrgP6mK0TVgEyPJAJIARQb8R8NkacKFaWcAxV7AZQjZYOANGAIAADrKKtZBaSfuAAAAAElFTkSuQmCC";
+
+function ensureQuickDropWindow() {
+  if (_quickDropWindow && !_quickDropWindow.isDestroyed()) return _quickDropWindow;
+  _quickDropWindow = new BrowserWindow({
+    width: 300,
+    height: 190,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  _quickDropWindow.loadFile(path.join(__dirname, "../renderer/quickdrop.html"));
+  _quickDropWindow.on("blur", () => { /* stays open — drops often come from a drag */ });
+  return _quickDropWindow;
+}
+
+function toggleQuickDrop() {
+  const win = ensureQuickDropWindow();
+  if (win.isVisible()) { win.hide(); return; }
+  // Park near the tray/menu-bar corner
+  try {
+    const { screen } = require("electron");
+    const disp = screen.getPrimaryDisplay().workArea;
+    win.setPosition(disp.x + disp.width - 320, disp.y + 12);
+  } catch {}
+  win.show();
+}
+
+app.whenReady().then(() => {
+  // Tray
+  try {
+    const { Tray, Menu, nativeImage } = require("electron");
+    const img = nativeImage.createFromDataURL(`data:image/png;base64,${TRAY_ICON_16}`);
+    if (process.platform === "darwin") img.setTemplateImage(true);
+    _tray = new Tray(img);
+    _tray.setToolTip("System Janitor");
+    _tray.setContextMenu(Menu.buildFromTemplate([
+      { label: "Open System Janitor", click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+      { label: "Quick Drop Zone", click: () => toggleQuickDrop() },
+      { type: "separator" },
+      { label: "Run quiet clean now", click: async () => { const s = await runQuietClean(); notifyQuietClean(s); } },
+      { type: "separator" },
+      { label: "Quit", click: () => { app.quit(); } },
+    ]));
+    // macOS: drop files straight onto the tray icon
+    _tray.on("drop-files", async (_e, files) => {
+      const results = await quickDropFiles(files);
+      const ok = results.filter((r) => r.ok).length;
+      try {
+        const { Notification } = require("electron");
+        if (Notification.isSupported()) {
+          new Notification({ title: "System Janitor", body: `Filed ${ok} of ${results.length} dropped file${results.length === 1 ? "" : "s"}.`, silent: true }).show();
+        }
+      } catch {}
+    });
+  } catch (err) {
+    console.warn(`[Tray] init failed (non-fatal): ${err.message}`);
+  }
+
+  // Scheduler
+  try {
+    SchedulerService.startScheduler(
+      () => featureStore.get("schedule", {}),
+      (ranAtMs) => {
+        const cur = { ...SchedulerService.DEFAULTS, ...featureStore.get("schedule", {}) };
+        featureStore.set("schedule", { ...cur, lastRunMs: ranAtMs });
+      },
+      runQuietClean,
+      notifyQuietClean
+    );
+    console.log("[main] Quiet-clean scheduler started");
+  } catch (err) {
+    console.warn(`[main] Scheduler init failed: ${err.message}`);
+  }
+
+  // Renewal radar: refresh shortly after boot (index is already on disk)
+  setTimeout(() => { rebuildRenewalRadar().catch(() => {}); }, 20_000);
+});

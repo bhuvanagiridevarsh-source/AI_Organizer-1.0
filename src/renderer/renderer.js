@@ -6014,6 +6014,9 @@ if (window.api?.on?.promptReorgExecuted) {
     largestList: $("insLargestList"),
     staleSummary: $("insStaleSummary"),
     staleList: $("insStaleList"),
+    shotSummary: $("insShotSummary"),
+    sweepShotsBtn: $("insSweepShotsBtn"),
+    shotNote: $("insShotNote"),
   };
 
   let insDir = null;      // folder being analyzed
@@ -6120,6 +6123,21 @@ if (window.api?.on?.promptReorgExecuted) {
       : "Everything here has been used in the last 6 months.";
     els.staleList.innerHTML = d.stale.slice(0, 10).map((f) => fileRow(f, `${fmtB(f.size)} · ${fmtAge(f.mtimeMs)}`)).join("");
 
+    // Screenshots
+    if (els.shotSummary) {
+      if (d.totals.screenshots) {
+        els.shotSummary.innerHTML = `<strong>${d.totals.screenshots.toLocaleString()}</strong> screenshot${d.totals.screenshots === 1 ? "" : "s"} scattered around (${fmtB(d.totals.screenshotBytes)}).`;
+        els.sweepShotsBtn.style.display = "inline-block";
+        els.sweepShotsBtn.disabled = false;
+        els.sweepShotsBtn.textContent = `Sweep ${d.totals.screenshots} into Screenshots/`;
+        els.shotNote.style.display = "block";
+      } else {
+        els.shotSummary.textContent = "No stray screenshots — clean.";
+        els.sweepShotsBtn.style.display = "none";
+        els.shotNote.style.display = "none";
+      }
+    }
+
     show("report");
   }
 
@@ -6173,6 +6191,25 @@ if (window.api?.on?.promptReorgExecuted) {
     window.api.shell.openPath(parent || p);
   });
 
+  els.sweepShotsBtn?.addEventListener("click", async () => {
+    if (!insData?.screenshots?.length || insBusy) return;
+    els.sweepShotsBtn.disabled = true;
+    els.sweepShotsBtn.textContent = "Sweeping…";
+    try {
+      const result = await window.api.insights.sweepScreenshots(insData.rootDir, insData.screenshots);
+      const msg = `✅ Swept ${result.moved} screenshot${result.moved === 1 ? "" : "s"} into Screenshots/` +
+        (result.failed.length ? ` (${result.failed.length} skipped)` : "");
+      showToast(msg, 5000);
+      feedAdd(msg + " — undoable in the Undo Log.");
+      if (typeof refreshTrialPill === "function") refreshTrialPill();
+      runScan();
+    } catch (err) {
+      if (typeof isLicenseLockError === "function" && isLicenseLockError(err)) handleLicenseLock();
+      else showToast("Sweep failed: " + (err.message || err), 5000);
+      els.sweepShotsBtn.disabled = false;
+    }
+  });
+
   els.archiveBtn?.addEventListener("click", async () => {
     if (!insData?.duplicates?.length || insBusy) return;
     const nCopies = insData.duplicates.reduce((s, g) => s + g.remove.length, 0);
@@ -6198,4 +6235,432 @@ if (window.api?.on?.promptReorgExecuted) {
       }
     }
   });
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// SEARCH PALETTE (⌘K) + SMART COLLECTIONS
+// ═══════════════════════════════════════════════════════════════════
+(() => {
+  const overlay = $("paletteOverlay");
+  const input = $("paletteInput");
+  const resultsEl = $("paletteResults");
+  const colsEl = $("paletteCollections");
+  const saveBtn = $("paletteSaveColBtn");
+  const askBtn = $("paletteAskBtn");
+  if (!overlay || !input || !window.api?.palette) return;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  let selIdx = -1;
+  let current = [];
+  let debounceTimer = null;
+
+  function openPalette() {
+    overlay.classList.remove("hidden");
+    input.value = "";
+    resultsEl.innerHTML = "";
+    saveBtn.style.display = "none";
+    selIdx = -1;
+    renderCollections();
+    setTimeout(() => input.focus(), 60);
+  }
+  function closePalette() { overlay.classList.add("hidden"); }
+
+  window.openSearchPalette = openPalette; // ui-init binds ⌘K to this
+
+  async function renderCollections() {
+    try {
+      const cols = await window.api.collections.list();
+      colsEl.innerHTML = cols.map((c) =>
+        `<span class="pal-col" data-id="${esc(c.id)}" style="cursor:pointer;font-size:10.5px;padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#bbb;background:rgba(255,255,255,.04);">
+          ${esc(c.name)} <span class="pal-col-x" data-del="${esc(c.id)}" title="Delete collection" style="color:#666;margin-left:4px;">×</span>
+        </span>`).join("");
+    } catch { colsEl.innerHTML = ""; }
+  }
+
+  function rowHtml(r, i) {
+    const e = r.entry;
+    return `<div class="pal-row" data-i="${i}" data-path="${esc(e.fullPath)}"
+      style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;${i === selIdx ? "background:rgba(79,195,247,.12);" : ""}">
+      <span style="flex:none;font-size:13px;">📄</span>
+      <span style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:#ddd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.filename)}</div>
+        <div style="font-size:10px;color:#777;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.folder)} — ${esc((r.matchReason || "").slice(0, 60))}</div>
+      </span>
+      <button class="btn btn-ghost btn-sm pal-reveal" data-path="${esc(e.fullPath)}" style="flex:none;font-size:9px;padding:1px 6px;" title="Show in folder">↗</button>
+    </div>`;
+  }
+
+  function paint() {
+    resultsEl.innerHTML = current.length
+      ? current.map(rowHtml).join("")
+      : (input.value.trim().length >= 2
+        ? `<div style="font-size:11.5px;color:#777;padding:10px;">No matches in your organized files. Try the AI instead →</div>`
+        : "");
+  }
+
+  async function runSearch(q) {
+    try {
+      current = await window.api.palette.search(q);
+      selIdx = current.length ? 0 : -1;
+      saveBtn.style.display = current.length ? "inline-block" : "none";
+      paint();
+    } catch { /* index unavailable */ }
+  }
+
+  input.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const q = input.value.trim();
+    if (q.length < 2) { current = []; paint(); saveBtn.style.display = "none"; return; }
+    debounceTimer = setTimeout(() => runSearch(q), 160);
+  });
+
+  function openEntry(pathStr) {
+    if (!pathStr) return;
+    window.api.shell.openPath(pathStr);
+    closePalette();
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closePalette(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); if (current.length) { selIdx = (selIdx + 1) % current.length; paint(); } }
+    if (e.key === "ArrowUp") { e.preventDefault(); if (current.length) { selIdx = (selIdx - 1 + current.length) % current.length; paint(); } }
+    if (e.key === "Enter" && selIdx >= 0 && current[selIdx]) openEntry(current[selIdx].entry.fullPath);
+  });
+
+  resultsEl.addEventListener("click", (e) => {
+    const reveal = e.target.closest(".pal-reveal");
+    if (reveal) {
+      const p = reveal.getAttribute("data-path");
+      const parent = p.substring(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
+      window.api.shell.openPath(parent || p);
+      return;
+    }
+    const row = e.target.closest(".pal-row");
+    if (row) openEntry(row.getAttribute("data-path"));
+  });
+
+  colsEl.addEventListener("click", async (e) => {
+    const del = e.target.closest(".pal-col-x");
+    if (del) {
+      e.stopPropagation();
+      await window.api.collections.remove(del.getAttribute("data-del"));
+      renderCollections();
+      return;
+    }
+    const chipEl = e.target.closest(".pal-col");
+    if (!chipEl) return;
+    const { collection, results } = await window.api.collections.run(chipEl.getAttribute("data-id"));
+    if (collection) input.value = collection.query;
+    current = results || [];
+    selIdx = current.length ? 0 : -1;
+    saveBtn.style.display = "none";
+    paint();
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    const name = prompt("Name this collection:", q.split(/\s+/).slice(0, 3).join(" "));
+    if (!name) return;
+    await window.api.collections.save({ name, query: q });
+    renderCollections();
+    showToast(`☆ Collection "${name}" saved`, 2500);
+  });
+
+  askBtn.addEventListener("click", () => {
+    const q = input.value.trim();
+    closePalette();
+    const chatBtn = $("chatBtn");
+    if (chatBtn) chatBtn.click();
+    setTimeout(() => {
+      const chatInput = $("chatInput");
+      if (chatInput && q) { chatInput.value = q; chatInput.focus(); }
+    }, 200);
+  });
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closePalette(); });
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// SMART RENAME — content-aware batch rename with preview
+// ═══════════════════════════════════════════════════════════════════
+(() => {
+  const overlay = $("renameOverlay");
+  const openBtn = $("smartRenameBtn");
+  if (!overlay || !openBtn || !window.api?.rename) return;
+
+  const pickState = $("rnPickState");
+  const progress = $("rnProgress");
+  const results = $("rnResults");
+  const list = $("rnList");
+  const countEl = $("rnCount");
+  const applyBtn = $("rnApplyBtn");
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  let suggestions = [];
+
+  function show(state) {
+    pickState.style.display = state === "pick" ? "block" : "none";
+    progress.style.display = state === "progress" ? "block" : "none";
+    results.style.display = state === "results" ? "block" : "none";
+  }
+
+  function updateCount() {
+    const n = list.querySelectorAll(".rn-check:checked").length;
+    countEl.textContent = `${n} of ${suggestions.length} selected`;
+    applyBtn.disabled = n === 0;
+    applyBtn.textContent = n ? `Rename ${n} file${n === 1 ? "" : "s"}` : "Rename selected";
+  }
+
+  function paint() {
+    list.innerHTML = suggestions.map((s, i) => {
+      const changed = s.suggestedName !== s.originalName;
+      return `<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:6px 10px;">
+        <input type="checkbox" class="rn-check" data-i="${i}" ${changed && s.confidence !== "low" ? "checked" : ""} style="flex:none;">
+        <span style="flex:1;min-width:0;">
+          <div style="font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.originalName)}</div>
+          <input type="text" class="rn-new" data-i="${i}" value="${esc(s.suggestedName)}"
+            style="width:100%;box-sizing:border-box;background:#1a1a1a;color:#dfd9c8;border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 7px;font-size:11.5px;font-family:inherit;outline:none;margin-top:2px;">
+        </span>
+        <span style="flex:none;font-size:9px;color:${s.confidence === "high" ? "#6fbf73" : s.confidence === "medium" ? "#e8b955" : "#777"};">${esc(s.confidence)}</span>
+      </div>`;
+    }).join("");
+    list.querySelectorAll(".rn-check").forEach((cb) => cb.addEventListener("change", updateCount));
+    updateCount();
+  }
+
+  window.api.rename.onProgress((p) => {
+    progress.textContent = `Reading contents… ${p.done}/${p.total} — ${p.current}`;
+  });
+
+  openBtn.addEventListener("click", () => {
+    overlay.classList.remove("hidden");
+    show("pick");
+  });
+
+  $("rnPickFolderBtn")?.addEventListener("click", async () => {
+    const dir = await window.api.dialog.openFolder();
+    if (!dir) return;
+    show("progress");
+    progress.textContent = "Reading contents…";
+    try {
+      const res = await window.api.rename.batchSuggest(dir);
+      suggestions = res.suggestions || [];
+      if (!suggestions.length) {
+        progress.textContent = "No files to rename in that folder.";
+        return;
+      }
+      show("results");
+      paint();
+      if (res.truncated) countEl.textContent += " (first 40 files)";
+    } catch (err) {
+      progress.textContent = "Couldn't read that folder: " + (err.message || err);
+    }
+  });
+
+  applyBtn?.addEventListener("click", async () => {
+    const picked = [];
+    list.querySelectorAll(".rn-check:checked").forEach((cb) => {
+      const i = +cb.getAttribute("data-i");
+      const newName = list.querySelector(`.rn-new[data-i="${i}"]`)?.value?.trim();
+      if (newName && newName !== suggestions[i].originalName) {
+        picked.push({ originalPath: suggestions[i].originalPath, newName });
+      }
+    });
+    if (!picked.length) return;
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Renaming…";
+    try {
+      const res = await window.api.rename.batchApply(picked);
+      showToast(`✅ Renamed ${res.applied} file${res.applied === 1 ? "" : "s"}` + (res.failed.length ? ` (${res.failed.length} skipped)` : ""), 5000);
+      feedAdd(`Smart Rename: ${res.applied} files renamed by content — undoable in the Undo Log.`);
+      if (typeof refreshTrialPill === "function") refreshTrialPill();
+      overlay.classList.add("hidden");
+    } catch (err) {
+      if (typeof isLicenseLockError === "function" && isLicenseLockError(err)) { overlay.classList.add("hidden"); handleLicenseLock(); }
+      else { showToast("Rename failed: " + (err.message || err), 5000); applyBtn.disabled = false; updateCount(); }
+    }
+  });
+
+  $("rnCloseBtn")?.addEventListener("click", () => overlay.classList.add("hidden"));
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.classList.add("hidden"); });
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// RENEWAL RADAR (inside Insights) + QUIET CLEAN SETTINGS + VAULT UI
+// ═══════════════════════════════════════════════════════════════════
+(() => {
+  if (!window.api?.renewals) return;
+  const radarList = $("insRadarList");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const KIND_ICON = { expiry: "⏳", renewal: "🔁", due: "💳", warranty: "🛡", insurance: "🛡", contract: "📑" };
+
+  function daysUntil(ms) { return Math.ceil((ms - Date.now()) / 86400000); }
+
+  function paintRadar(items) {
+    if (!radarList) return;
+    if (!items || !items.length) {
+      radarList.innerHTML = `<div style="font-size:11.5px;color:#777;">No upcoming dates found in your documents yet. Radar re-scans after each organize.</div>`;
+      return;
+    }
+    const soon = items.filter((i) => daysUntil(i.dateMs) >= -7).slice(0, 8);
+    radarList.innerHTML = soon.map((i) => {
+      const d = daysUntil(i.dateMs);
+      const urgency = d < 0 ? "#e57373" : d <= 14 ? "#e8b955" : "#8bc34a";
+      const when = d < 0 ? `${-d}d overdue` : d === 0 ? "today" : `in ${d}d`;
+      return `<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:6px 10px;font-size:11.5px;">
+        <span style="flex:none;">${KIND_ICON[i.kind] || "📅"}</span>
+        <span style="flex:1;min-width:0;">
+          <div style="color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(i.fileName)} <span style="color:#666;">· ${esc(i.folder)}</span></div>
+          <div style="font-size:10px;color:#777;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(i.context)}</div>
+        </span>
+        <span style="flex:none;color:${urgency};font-weight:600;">${i.dateISO} · ${when}</span>
+      </div>`;
+    }).join("");
+  }
+
+  async function loadRadar() {
+    try { paintRadar((await window.api.renewals.get()).items); } catch {}
+  }
+
+  $("insightsBtn")?.addEventListener("click", loadRadar);
+  $("insRadarRefreshBtn")?.addEventListener("click", async () => {
+    try { paintRadar((await window.api.renewals.rebuild()).items); showToast("Radar refreshed", 2000); } catch {}
+  });
+
+  // ── Quiet clean + chrono settings ──────────────────────────
+  const schedEnabled = $("schedEnabled");
+  const schedFrequency = $("schedFrequency");
+  const schedHour = $("schedHour");
+  const chronoSelect = $("chronoSelect");
+
+  if (schedHour) {
+    schedHour.innerHTML = [...Array(24).keys()].map((h) =>
+      `<option value="${h}">${h === 0 ? "12am" : h < 12 ? h + "am" : h === 12 ? "12pm" : (h - 12) + "pm"}</option>`).join("");
+  }
+
+  async function loadFeatureSettings() {
+    try {
+      const s = await window.api.features.getSettings();
+      if (schedEnabled) schedEnabled.checked = !!s.schedule.enabled;
+      if (schedFrequency) schedFrequency.value = s.schedule.frequency || "daily";
+      if (schedHour) schedHour.value = String(s.schedule.hour ?? 2);
+      if (chronoSelect) chronoSelect.value = s.chronoFiling || "off";
+      const st = $("schedStatus");
+      if (st && s.schedule.lastRunMs) st.textContent = `Last quiet clean: ${new Date(s.schedule.lastRunMs).toLocaleString()}`;
+    } catch {}
+  }
+
+  async function saveSched() {
+    await window.api.features.setSettings({
+      schedule: { enabled: schedEnabled.checked, frequency: schedFrequency.value, hour: +schedHour.value },
+    });
+  }
+
+  schedEnabled?.addEventListener("change", saveSched);
+  schedFrequency?.addEventListener("change", saveSched);
+  schedHour?.addEventListener("change", saveSched);
+  chronoSelect?.addEventListener("change", async () => {
+    await window.api.features.setSettings({ chronoFiling: chronoSelect.value });
+    showToast(chronoSelect.value === "off" ? "Date folders off" : "New files will be filed by date", 2500);
+  });
+
+  $("schedRunNowBtn")?.addEventListener("click", async () => {
+    const st = $("schedStatus");
+    if (st) st.textContent = "Running quiet clean…";
+    try {
+      const s = await window.api.schedule.runNow();
+      if (st) st.textContent = `Done — ${s.moved} filed, ${s.skipped} left alone.`;
+      feedAdd(`Quiet clean: ${s.moved} filed, ${s.skipped} left for you to decide.`);
+      if (typeof refreshTrialPill === "function") refreshTrialPill();
+    } catch (err) {
+      if (st) st.textContent = "Quiet clean failed: " + (err.message || err);
+    }
+  });
+
+  if (window.api.schedule?.onDone) {
+    window.api.schedule.onDone((s) => {
+      feedAdd(`🌙 Quiet clean while you were away: ${s.moved} filed, ${s.skipped} left alone.`);
+      loadFeatureSettings();
+    });
+  }
+
+  // ── Vault UI ────────────────────────────────────────────────
+  const vaultStatusRow = $("vaultStatusRow");
+  const vaultList = $("vaultList");
+
+  function fmtSize(b) {
+    if (!b) return "0 B";
+    if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+
+  async function loadVault() {
+    if (!vaultStatusRow) return;
+    try {
+      const ok = await window.api.vault.available();
+      if (!ok) {
+        vaultStatusRow.innerHTML = `<span style="color:#e8b955;">Unavailable</span> — OS keychain not accessible on this machine.`;
+        $("vaultAddBtn").disabled = true;
+        return;
+      }
+      const items = await window.api.vault.list();
+      vaultStatusRow.innerHTML = items.length
+        ? `<span style="color:var(--color-success);">🔒 ${items.length} file${items.length === 1 ? "" : "s"} encrypted</span> in your Vault.`
+        : "Vault is ready — empty. Sensitive files you add are encrypted on disk.";
+      vaultList.innerHTML = items.map((it) => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+          <span style="flex:none;">🔒</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;">${esc(it.name)}</span>
+          <span style="flex:none;color:#777;">${fmtSize(it.size)}</span>
+          <button class="btn btn-ghost btn-sm vault-restore" data-id="${esc(it.id)}" style="flex:none;font-size:9px;padding:1px 6px;">Restore</button>
+        </div>`).join("");
+    } catch (err) {
+      vaultStatusRow.textContent = "Vault error: " + (err.message || err);
+    }
+  }
+
+  $("vaultAddBtn")?.addEventListener("click", async () => {
+    const files = await window.api.dialog.openFiles();
+    if (!files || !files.length) return;
+    vaultStatusRow.textContent = `Encrypting ${files.length} file${files.length === 1 ? "" : "s"}…`;
+    try {
+      const res = await window.api.vault.add(files);
+      showToast(`🔒 ${res.added.length} file${res.added.length === 1 ? "" : "s"} moved into the Vault`, 4000);
+      if (res.failed.length) feedAdd(`Vault: ${res.failed.length} file(s) skipped — ${res.failed[0].error}`, true);
+      loadVault();
+    } catch (err) {
+      showToast("Vault failed: " + (err.message || err), 5000);
+      loadVault();
+    }
+  });
+
+  $("vaultRefreshBtn")?.addEventListener("click", loadVault);
+
+  vaultList?.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".vault-restore");
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      const outPath = await window.api.vault.restore(btn.getAttribute("data-id"));
+      showToast(`Restored: ${outPath.split(/[\\/]/).pop()}`, 4000);
+      loadVault();
+    } catch (err) {
+      showToast("Restore failed: " + (err.message || err), 5000);
+      btn.disabled = false;
+    }
+  });
+
+  // Load settings + vault status when Settings opens
+  const settingsBtnEl = $("settingsBtn");
+  if (settingsBtnEl) settingsBtnEl.addEventListener("click", () => { loadFeatureSettings(); loadVault(); });
+  // …and once at boot (elements exist regardless of overlay visibility)
+  loadFeatureSettings();
+  loadVault();
 })();
