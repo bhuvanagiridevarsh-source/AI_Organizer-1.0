@@ -645,6 +645,21 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeAllListeners("model:needs-download");
       ipcRenderer.on("model:needs-download", (_e, data) => callback(data));
     },
+    /** Model download is retrying after a transient/network failure: { attempt, maxAttempts, reason, model }. */
+    modelPullRetry: (callback) => {
+      ipcRenderer.removeAllListeners("model:pull-retry");
+      ipcRenderer.on("model:pull-retry", (_e, data) => callback(data));
+    },
+    /** Model finished loading into memory and is ready for inference (fires after download + load, not just download). */
+    modelReady: (callback) => {
+      ipcRenderer.removeAllListeners("model:ready");
+      ipcRenderer.on("model:ready", () => callback());
+    },
+    /** Model failed to load into memory (e.g. downloaded fine but load/init failed): string message. */
+    modelError: (callback) => {
+      ipcRenderer.removeAllListeners("model:error");
+      ipcRenderer.on("model:error", (_e, message) => callback(message));
+    },
     /**
      * Search index background upgrade progress.
      * Payload: { current, total, done? }

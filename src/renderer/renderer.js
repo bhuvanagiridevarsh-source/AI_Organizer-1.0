@@ -4155,18 +4155,38 @@ async function openLanConfigModal() {
         : "Almost there…");
     });
 
+    // Transient network/TLS hiccups get retried automatically on the main
+    // process side — surface that so a slow/flaky connection doesn't look
+    // like a silent hang to the user.
+    if (window.api.on.modelPullRetry) {
+      window.api.on.modelPullRetry(({ attempt, maxAttempts }) => {
+        setProgress(window._modelDlPct || 0, `Network hiccup — retrying (${attempt}/${maxAttempts})…`);
+      });
+    }
+
     window.api.on.modelPullDone(() => {
       setProgress(100, "");
       if (nameEl) nameEl.textContent = "Your private AI is ready ✓";
       if (statusEl) statusEl.textContent = "Everything now runs on this Mac — fully offline.";
       if (typeof feedAdd === "function") feedAdd(`AI model downloaded: ${model}`);
-      markReady();
+      // Note: the file is on disk at this point, but it still has to load
+      // into memory (see modelReady/modelError below) before it's actually
+      // usable — that success/failure can come slightly later.
       setTimeout(hidePill, 4000);
     });
 
     window.api.on.modelPullError(({ error }) => {
       showError(error || "unknown error");
     });
+
+    // Loading the downloaded file into memory is a separate step from the
+    // download itself — only flip _modelReady once that's actually confirmed.
+    if (window.api.on.modelReady) {
+      window.api.on.modelReady(() => markReady());
+    }
+    if (window.api.on.modelError) {
+      window.api.on.modelError((message) => showError(message || "model failed to load"));
+    }
 
     // Invoke the pull (returns when complete or failed — events carry real-time progress)
     try {

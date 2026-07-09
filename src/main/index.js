@@ -206,7 +206,7 @@ function saveLanConfig(cfg) {
   fs.writeFileSync(LAN_CONFIG_PATH, JSON.stringify(cfg, null, 2), "utf-8");
 }
 
-const { ensureModel, isModelDownloaded, getModelPath } = require("./engine/modelDownloader");
+const { ensureModel, isModelDownloaded, getModelPath, MODEL_FILE } = require("./engine/modelDownloader");
 const license = require("./services/licenseService");
 
 // electron-store: defensive load with a JSON-file fallback. In v1.0.5–1.0.7 some
@@ -582,13 +582,13 @@ app.whenReady().then(async () => {
       // First launch — download the GGUF then load it
       console.log("[main] Model not found — starting first-launch download …");
       setTimeout(async () => {
-        mainWindow?.webContents.send("model:needs-download");
+        mainWindow?.webContents.send("model:needs-download", { model: MODEL_FILE });
         let result;
         try {
           result = await ensureModel(mainWindow, null);
         } catch (downloadErr) {
           console.error(`[main] ensureModel threw: ${downloadErr.message}`);
-          mainWindow?.webContents.send("model:download-error", { message: downloadErr.message });
+          mainWindow?.webContents.send("model:pull-error", { error: downloadErr.message, model: MODEL_FILE });
           _showModelErrorDialog(downloadErr.message, true);
           return;
         }
@@ -605,7 +605,8 @@ app.whenReady().then(async () => {
             _showModelErrorDialog(loadResult.error);
           }
         } else {
-          mainWindow?.webContents.send("model:download-error", { message: result.error });
+          // modelDownloader.js already emitted "model:pull-error" to the
+          // renderer once it exhausted its own retries — don't duplicate it.
           aiHealthMarkError();
           _showModelErrorDialog(result.error, true);
         }
