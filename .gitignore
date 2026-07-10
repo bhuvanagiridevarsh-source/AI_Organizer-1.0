@@ -41,3 +41,8 @@ test_folder/
 training_data/
 wizard_state.json
 feedback.json
+# 1.6GB of generated stress-test fixtures, some with deliberately pathological
+# (extremely long) filenames used to test the organizer's edge-case handling.
+# These broke `actions/checkout` on Windows CI (path > 260 chars) — never
+# should have been committed.
+stress_test_folder/
