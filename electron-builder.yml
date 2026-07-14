@@ -143,8 +143,11 @@ nsis:
   allowToChangeInstallationDirectory: true
 
 # Linux
+# deb removed: electron-builder's bundled fpm tool depends on a Ruby build
+# that needs libcrypt.so.1, which Vercel's build container doesn't have
+# (and we can't apt-get install there). AppImage needs no packaging step
+# beyond electron-builder's own bundled AppImage binary, so it builds fine.
 linux:
   target:
     - AppImage
-    - deb
   category: Utility
