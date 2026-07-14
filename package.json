@@ -10,7 +10,7 @@
     "dev": "electron .",
     "precompile": "echo Compiling TypeScript...",
     "compile": "node scripts/compile-ts.js",
-    "build":       "node scripts/compile-ts.js && electron-builder",
+    "build":       "node scripts/compile-ts.js && electron-builder --publish never",
     "build:mac":   "node scripts/compile-ts.js && electron-builder --mac",
     "build:win":   "node scripts/compile-ts.js && electron-builder --win --x64",
     "build:linux": "node scripts/compile-ts.js && electron-builder --linux",
