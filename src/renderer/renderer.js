@@ -1628,24 +1628,35 @@ let _paywallShownThisSession = false;
 async function refreshLicenseUI() {
   const statusEl = $("licenseStatusRow");
   const deactivateBtn = $("deactivateLicenseBtn");
+  const manageSubBtn = $("manageSubBtn");
   if (!statusEl || !window.api || !window.api.license) return;
   try {
     const info = await window.api.license.info();
     _licenseBuyUrl = info.buyUrl || "";
     if (info.mode === "licensed" || (info.status === "valid" && info.cached)) {
-      statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Licensed</span> &mdash; unlimited organizing &mdash; key: <code style="font-size:var(--text-xs);font-family:var(--font-mono)">${info.key.slice(0, 8)}…</code>`;
+      const subStatus = info.subscriptionStatus;
+      if (subStatus === "past_due") {
+        statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Subscribed</span> &mdash; <span style="color:#e8b955;">⚠ Payment past due.</span> Update your payment method to keep access.`;
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--color-success);">&#10003; Subscribed</span> &mdash; unlimited organizing &mdash; key: <code style="font-size:var(--text-xs);font-family:var(--font-mono)">${info.key.slice(0, 8)}…</code>`;
+      }
+      if (manageSubBtn) manageSubBtn.style.display = "inline-block";
       if (deactivateBtn) deactivateBtn.style.display = "inline-block";
     } else if (info.status === "invalid") {
-      statusEl.innerHTML = `<span style="color:var(--color-error);">Invalid key.</span> Enter a valid license key below.`;
+      statusEl.innerHTML = `<span style="color:var(--color-error);">Invalid key.</span> Enter a valid subscription key below.`;
+      if (manageSubBtn) manageSubBtn.style.display = "none";
       if (deactivateBtn) deactivateBtn.style.display = "none";
     } else if (info.mode === "trial") {
-      statusEl.innerHTML = `<span style="color:#e8b955;">Free trial</span> &mdash; <strong>${info.trialMovesLeft}</strong> of ${info.trialMovesTotal} file moves left. Activate a key for unlimited.`;
+      statusEl.innerHTML = `<span style="color:#e8b955;">Free trial</span> &mdash; <strong>${info.trialMovesLeft}</strong> of ${info.trialMovesTotal} file moves left. Subscribe for unlimited.`;
+      if (manageSubBtn) manageSubBtn.style.display = "none";
       if (deactivateBtn) deactivateBtn.style.display = "none";
     } else if (info.mode === "locked") {
-      statusEl.innerHTML = `<span style="color:var(--color-error);">Trial finished.</span> Enter a license key to keep organizing — undo still works without one.`;
+      statusEl.innerHTML = `<span style="color:var(--color-error);">Trial finished.</span> Subscribe to keep organizing — undo still works without a subscription.`;
+      if (manageSubBtn) manageSubBtn.style.display = "none";
       if (deactivateBtn) deactivateBtn.style.display = "none";
     } else {
-      statusEl.textContent = "No license activated. Enter your key below.";
+      statusEl.textContent = "No subscription active. Enter your key below.";
+      if (manageSubBtn) manageSubBtn.style.display = "none";
       if (deactivateBtn) deactivateBtn.style.display = "none";
     }
   } catch {
@@ -1696,7 +1707,7 @@ function isLicenseLockError(err) {
 
 function handleLicenseLock() {
   refreshTrialPill();
-  feedAdd("Free trial finished — activate a license to keep organizing. Your files are untouched and undo still works.", true);
+  feedAdd("Free trial finished — subscribe to keep organizing. Your files are untouched and undo still works.", true);
   if (!_paywallShownThisSession) {
     _paywallShownThisSession = true;
     showPaywall();
@@ -1866,11 +1877,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
   }
+  const manageSubBtn = $("manageSubBtn");
+  if (manageSubBtn) {
+    manageSubBtn.addEventListener("click", async () => {
+      manageSubBtn.disabled = true;
+      manageSubBtn.textContent = "Opening…";
+      try {
+        const result = await window.api.license.portalUrl();
+        if (result?.url) {
+          window.api.shell.openUrl(result.url);
+        } else {
+          const statusEl = $("licenseActivateStatus");
+          if (statusEl) { statusEl.textContent = result?.error || "Could not open portal."; statusEl.style.color = "var(--color-error)"; }
+        }
+      } catch (err) {
+        const statusEl = $("licenseActivateStatus");
+        if (statusEl) { statusEl.textContent = `Error: ${err.message}`; statusEl.style.color = "var(--color-error)"; }
+      } finally {
+        manageSubBtn.disabled = false;
+        manageSubBtn.textContent = "Manage Subscription";
+      }
+    });
+  }
   if (deactivateLicenseBtn) {
     deactivateLicenseBtn.addEventListener("click", async () => {
       await window.api.license.clear();
       const statusEl = $("licenseActivateStatus");
-      if (statusEl) { statusEl.textContent = "License removed."; statusEl.style.color = "var(--ink-3)"; }
+      if (statusEl) { statusEl.textContent = "Key removed."; statusEl.style.color = "var(--ink-3)"; }
       refreshLicenseUI();
     });
   }

@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld("api", {
     info: () => ipcRenderer.invoke("license:info"),
     access: () => ipcRenderer.invoke("license:access"),
     clear: () => ipcRenderer.invoke("license:clear"),
+    portalUrl: () => ipcRenderer.invoke("license:portal-url"),
     onLocked: (callback) => ipcRenderer.on("license:locked", (_e, data) => callback(data)),
   },
 

@@ -3711,7 +3711,10 @@ html.show-kanji .footer-kanji { display: block; }
           <button class="btn btn-primary btn-sm" id="activateLicenseBtn">Activate</button>
         </div>
         <div id="licenseActivateStatus" style="font-size:11px;margin-top:6px;min-height:16px;"></div>
-        <button class="btn btn-ghost btn-sm" id="deactivateLicenseBtn" style="margin-top:6px;display:none;font-size:10px;color:#888;">Remove license</button>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="btn btn-ghost btn-sm" id="manageSubBtn" style="display:none;font-size:10px;color:var(--ds-cyan);">Manage Subscription</button>
+          <button class="btn btn-ghost btn-sm" id="deactivateLicenseBtn" style="display:none;font-size:10px;color:#888;">Remove key</button>
+        </div>
       </div>
 
       <!-- ── Quiet clean schedule ─────────────────────────────────── -->
@@ -4677,11 +4680,11 @@ html.show-kanji .footer-kanji { display: block; }
         that mess didn't sort itself.
       </p>
       <p style="font-size:12.5px;color:#aaa;line-height:1.6;margin-bottom:16px;">
-        A license unlocks unlimited organizing on up to 2 devices.
-        Everything stays on your computer — a license never adds cloud anything.
+        A subscription unlocks unlimited organizing on up to 2 devices.
+        Everything stays on your computer — your files never leave.
       </p>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
-        <button class="btn btn-primary" id="paywallBuyBtn" style="min-width:220px;">Get a license</button>
+        <button class="btn btn-primary" id="paywallBuyBtn" style="min-width:220px;">Subscribe</button>
         <button class="btn btn-ghost btn-sm" id="paywallHaveKeyBtn">I already have a key</button>
         <button class="btn btn-ghost btn-sm" id="paywallLaterBtn" style="color:#777;font-size:11px;">Not now</button>
       </div>

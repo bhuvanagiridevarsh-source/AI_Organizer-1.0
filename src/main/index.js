@@ -1153,6 +1153,10 @@ ipcMain.handle("insights:archive-duplicates", async (_event, rootDir, groups) =>
   return result;
 });
 
+ipcMain.handle("license:portal-url", async () => {
+  return license.getPortalUrl();
+});
+
 ipcMain.handle("license:clear", () => {
   license.clearLicense();
   return true;

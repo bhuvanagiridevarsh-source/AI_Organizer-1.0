@@ -18,7 +18,9 @@
       "Bash(curl -s -X POST https://backend-two-mu-53.vercel.app/api/license/validate -H 'Content-Type: application/json' -d '{\"key\":\"test-key-delete-me\"}')",
       "Bash(wait)",
       "Bash(awk 'NR>=158 && NR<=680' /Users/devarshbhuvanagiri/Desktop/AI_Organizer/src/renderer/index.html)",
-      "Bash(awk 'NR>=11 && NR<=730' /Users/devarshbhuvanagiri/Desktop/AI_Organizer/src/renderer/index.html)"
+      "Bash(awk 'NR>=11 && NR<=730' /Users/devarshbhuvanagiri/Desktop/AI_Organizer/src/renderer/index.html)",
+      "mcp__claude_ai_Stripe__stripe_implementation_planner",
+      "mcp__claude_ai_Stripe__get_stripe_account_info"
     ]
   }
 }

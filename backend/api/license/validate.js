@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
 
     const { data, error } = await supabase
       .from("license_keys")
-      .select("plan")
+      .select("plan, subscription_status")
       .eq("key", key)
       .eq("active", true)
       .single();
@@ -61,7 +61,11 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ valid: true, plan: data.plan });
+    return res.status(200).json({
+      valid: true,
+      plan: data.plan,
+      subscription_status: data.subscription_status || "active",
+    });
   } catch {
     return res.status(200).json({ valid: false });
   }

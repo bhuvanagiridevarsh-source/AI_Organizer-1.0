@@ -70,14 +70,15 @@ const https = require("https");
 const TESTING_MODE = true; // ← set false when ready to charge (after Stripe + Resend are wired up)
 
 const LICENSE_API_URL = "https://backend-two-mu-53.vercel.app/api/license/validate";
+const PORTAL_API_URL = "https://backend-two-mu-53.vercel.app/api/billing/portal";
 
-// Your Stripe Payment Link (Stripe Dashboard → Payment Links → New).
-// Shown on the paywall's "Get a license" button. Leave "" until created —
+// Your Stripe Payment Link (Stripe Dashboard → Payment Links → New, mode=subscription).
+// Shown on the paywall's "Subscribe" button. Leave "" until created —
 // the UI falls back to showing the support email instead of a dead button.
-const CHECKOUT_URL = "";
+const CHECKOUT_URL = "https://buy.stripe.com/test_6oU4gBgDn1aG3ARfyhak000"; // TEST MODE link — swap for the live payment link once Stripe onboarding (business info + bank account) is approved
 
-// True when the URL has not been configured yet (prevents a crash on new URL())
 const _API_URL_CONFIGURED = LICENSE_API_URL.startsWith("https://");
+const _PORTAL_URL_CONFIGURED = PORTAL_API_URL.startsWith("https://");
 
 // Cache validity period (24 hours in milliseconds) — how often we *try* to revalidate
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -103,6 +104,7 @@ const store = new Store({
     licenseKey: { type: "string", default: "" },
     status: { type: "string", enum: ["valid", "invalid", "unknown"], default: "unknown" },
     plan: { type: "string", default: "" },
+    subscriptionStatus: { type: "string", default: "" },
     expiresAt: { type: "number", default: 0 }, // Unix ms when cache expires
     validatedAt: { type: "number", default: 0 },
     trialMovesUsed: { type: "number", default: 0 }, // lifetime trial consumption
@@ -201,6 +203,7 @@ async function validateLicense(key) {
     store.set("licenseKey", key);
     store.set("status", response.valid ? "valid" : "invalid");
     store.set("plan", response.plan || "");
+    store.set("subscriptionStatus", response.subscription_status || "");
     store.set("validatedAt", now);
     store.set("expiresAt", now + CACHE_TTL_MS);
 
@@ -317,6 +320,7 @@ function getLicenseInfo() {
     key: store.get("licenseKey") || "",
     status: store.get("status") || "unknown",
     plan: store.get("plan") || "",
+    subscriptionStatus: store.get("subscriptionStatus") || "",
     validatedAt: store.get("validatedAt") || 0,
     expiresAt: store.get("expiresAt") || 0,
     cached: !_isCacheExpired(),
@@ -338,8 +342,53 @@ function clearLicense() {
   store.delete("licenseKey");
   store.delete("status");
   store.delete("plan");
+  store.delete("subscriptionStatus");
   store.delete("validatedAt");
   store.delete("expiresAt");
+}
+
+/**
+ * Create a Stripe Customer Portal session URL for the currently stored key.
+ * Returns { url } on success or { error } on failure.
+ */
+async function getPortalUrl() {
+  const key = store.get("licenseKey");
+  if (!key) return { error: "No license key stored" };
+  if (!_PORTAL_URL_CONFIGURED) return { error: "Portal URL not configured" };
+
+  return new Promise((resolve) => {
+    const postData = JSON.stringify({ key });
+    const url = new URL(PORTAL_API_URL);
+
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(postData),
+        },
+        timeout: REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve({ error: "Invalid response from portal server" });
+          }
+        });
+      }
+    );
+    req.on("error", (err) => resolve({ error: err.message }));
+    req.on("timeout", () => { req.destroy(); resolve({ error: "Request timed out" }); });
+    req.write(postData);
+    req.end();
+  });
 }
 
 // ── Internals ──────────────────────────────────────────────
@@ -358,4 +407,5 @@ module.exports = {
   getLicenseInfo,
   getDeviceId,
   clearLicense,
+  getPortalUrl,
 };
