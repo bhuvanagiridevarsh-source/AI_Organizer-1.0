@@ -1,0 +1,36 @@
+<svg viewBox="0 0 1540 220" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1540" height="220" fill="#faf9f7"/>
+<text x="770.0" y="34" text-anchor="middle" font-size="20" font-weight="600" fill="#2b2926">Organize & Classify</text>
+<rect x="20" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="120.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 1</text>
+<text x="120.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Pick a folder to</text>
+<text x="120.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">organize</text>
+<line x1="226" y1="135.0" x2="274" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="280" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="380.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 2</text>
+<text x="380.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">App reads file contents:</text>
+<text x="380.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">text, OCR, PDF/Word</text>
+<text x="380.0" y="166" text-anchor="middle" font-size="13.5" fill="#2b2926">parsing</text>
+<line x1="486" y1="135.0" x2="534" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="540" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="640.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 3</text>
+<text x="640.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Local model classifies</text>
+<text x="640.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">files & drafts a folder</text>
+<text x="640.0" y="166" text-anchor="middle" font-size="13.5" fill="#2b2926">plan</text>
+<line x1="746" y1="135.0" x2="794" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="800" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="900.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 4</text>
+<text x="900.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">You review the plan</text>
+<line x1="1006" y1="135.0" x2="1054" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1060" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="1160.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 5</text>
+<text x="1160.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Files are moved into</text>
+<text x="1160.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">structure (by date if</text>
+<text x="1160.0" y="166" text-anchor="middle" font-size="13.5" fill="#2b2926">chronological filing is</text>
+<line x1="1266" y1="135.0" x2="1314" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1320" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="1420.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 6</text>
+<text x="1420.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Undo anytime from the</text>
+<text x="1420.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">Undo log</text>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#8a8578"/></marker></defs>
+</svg>

@@ -1,0 +1,23 @@
+<svg viewBox="0 0 1020 220" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1020" height="220" fill="#faf9f7"/>
+<text x="510.0" y="34" text-anchor="middle" font-size="20" font-weight="600" fill="#2b2926">Tray & Quick-Drop</text>
+<rect x="20" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="120.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 1</text>
+<text x="120.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Open the tray quick-drop</text>
+<text x="120.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">window</text>
+<line x1="226" y1="135.0" x2="274" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="280" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="380.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 2</text>
+<text x="380.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Drag a file onto it</text>
+<line x1="486" y1="135.0" x2="534" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="540" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="640.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 3</text>
+<text x="640.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">File is instantly</text>
+<text x="640.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">classified & filed</text>
+<line x1="746" y1="135.0" x2="794" y2="135.0" stroke="#8a8578" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="800" y="80" width="200" height="110" rx="10" fill="#ffffff" stroke="#d97757" stroke-width="2"/>
+<text x="900.0" y="108" text-anchor="middle" font-size="14" font-weight="700" fill="#d97757">STEP 4</text>
+<text x="900.0" y="132" text-anchor="middle" font-size="13.5" fill="#2b2926">Tray shows a</text>
+<text x="900.0" y="149" text-anchor="middle" font-size="13.5" fill="#2b2926">confirmation</text>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#8a8578"/></marker></defs>
+</svg>
